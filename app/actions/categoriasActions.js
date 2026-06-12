@@ -1,28 +1,49 @@
 'use server'
 import { poolPromise, sql } from '@/lib/db';
 
-// Recupera el catalogo completo de categorias ordenado alfabeticamente.
 export async function obtenerCategorias() {
     try {
         const pool = await poolPromise;
-        const result = await pool.request().query('SELECT id, nombre FROM Categorias ORDER BY nombre ASC');
+        const result = await pool.request().execute('sp_ObtenerCategorias');
         return { success: true, datos: result.recordset };
     } catch (err) {
-        console.error('[SERVER ACTION ERROR] Fallo al recuperar categorias:', err.message);
         return { success: false, error: err.message };
     }
 }
 
-// Registra una nueva categoria en el sistema relacional.
 export async function registrarCategoria(nombre) {
     try {
         const pool = await poolPromise;
         await pool.request()
             .input('nombre', sql.VarChar(50), nombre)
-            .query('INSERT INTO Categorias (nombre) VALUES (@nombre)');
+            .execute('sp_RegistrarCategoria');
         return { success: true };
     } catch (err) {
-        console.error('[SERVER ACTION ERROR] Fallo al registrar categoria:', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+export async function actualizarCategoria(id, nombre) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('id', sql.Int, parseInt(id))
+            .input('nombre', sql.VarChar(50), nombre)
+            .execute('sp_ActualizarCategoria');
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+export async function eliminarCategoria(id) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('id', sql.Int, parseInt(id))
+            .execute('sp_EliminarCategoria');
+        return { success: true };
+    } catch (err) {
         return { success: false, error: err.message };
     }
 }

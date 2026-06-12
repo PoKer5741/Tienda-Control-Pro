@@ -1,45 +1,70 @@
 'use server'
 import { poolPromise, sql } from '@/lib/db';
 
-/**
- * Recupera el catalogo completo de productos con su respectiva categoria.
- * Resuelve el requerimiento minimo de operacion de listado (Punto 6.7).
- */
 export async function obtenerProductos() {
     try {
         const pool = await poolPromise;
-        const result = await pool.request().query(`
-            SELECT p.id, p.nombre, p.precio, p.cantidad, c.nombre AS categoria
-            FROM Productos p
-            INNER JOIN Categorias c ON p.categoria_id = c.id
-            ORDER BY p.nombre ASC
-        `);
+        const result = await pool.request().execute('sp_ObtenerProductos');
         return { success: true, datos: result.recordset };
     } catch (err) {
-        console.error('[SERVER ACTION ERROR] Fallo al recuperar productos:', err.message);
         return { success: false, error: err.message };
     }
 }
 
-/**
- * Inserta un nuevo producto utilizando consultas parametrizadas.
- * Resuelve el requerimiento de formulario funcional e insercion (Punto 6.5 y 6.7).
- */
-export async function registrarNuevoProducto(nombre, categoriaId, precio, cantidad) {
+export async function registrarNuevoProducto(codigo, nombre, categoriaId, costo, precio, cantidad, iva, minimo, maximo, fechaVencimiento, estadoComercial) {
     try {
         const pool = await poolPromise;
         await pool.request()
-            .input('nombre', sql.VarChar(100), nombre)
+            .input('codigo', sql.VarChar(50), codigo)
+            .input('nombre', sql.VarChar(150), nombre)
             .input('categoria_id', sql.Int, parseInt(categoriaId))
+            .input('costo', sql.Decimal(10, 2), parseFloat(costo))
             .input('precio', sql.Decimal(10, 2), parseFloat(precio))
             .input('cantidad', sql.Int, parseInt(cantidad))
-            .query(`
-                INSERT INTO Productos (nombre, categoria_id, precio, cantidad)
-                VALUES (@nombre, @categoria_id, @precio, @cantidad)
-            `);
+            .input('porcentaje_iva', sql.Decimal(5, 2), parseFloat(iva))
+            .input('stock_minimo', sql.Int, parseInt(minimo))
+            .input('stock_maximo', sql.Int, parseInt(maximo))
+            .input('fecha_vencimiento', sql.Date, fechaVencimiento ? new Date(fechaVencimiento) : null)
+            .input('estado_comercial', sql.VarChar(20), estadoComercial || 'Activo')
+            .execute('sp_RegistrarProducto');
         return { success: true };
     } catch (err) {
-        console.error('[SERVER ACTION ERROR] Fallo al registrar producto:', err.message);
+        return { success: false, error: err.message };
+    }
+}
+
+export async function actualizarProducto(id, codigo, nombre, categoriaId, costo, precio, cantidad, iva, minimo, maximo, fechaVencimiento, estadoComercial) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('id', sql.Int, parseInt(id))
+            .input('codigo', sql.VarChar(50), codigo)
+            .input('nombre', sql.VarChar(150), nombre)
+            .input('categoria_id', sql.Int, parseInt(categoriaId))
+            .input('costo', sql.Decimal(10, 2), parseFloat(costo))
+            .input('precio', sql.Decimal(10, 2), parseFloat(precio))
+            .input('cantidad', sql.Int, parseInt(cantidad))
+            .input('porcentaje_iva', sql.Decimal(5, 2), parseFloat(iva))
+            .input('stock_minimo', sql.Int, parseInt(minimo))
+            .input('stock_maximo', sql.Int, parseInt(maximo))
+            .input('fecha_vencimiento', sql.Date, fechaVencimiento ? new Date(fechaVencimiento) : null)
+            .input('estado_comercial', sql.VarChar(20), estadoComercial || 'Activo')
+            .execute('sp_ActualizarProducto');
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+export async function eliminarProducto(id) {
+    try {
+        const pool = await poolPromise;
+        // Solo para productos que NUNCA han sido facturados (si ya se facturó, SQL lanzará error por integridad referencial)
+        await pool.request()
+            .input('id', sql.Int, parseInt(id))
+            .query('DELETE FROM Productos WHERE id = @id');
+        return { success: true };
+    } catch (err) {
         return { success: false, error: err.message };
     }
 }
