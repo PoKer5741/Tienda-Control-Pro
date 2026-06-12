@@ -14,6 +14,7 @@ export default function Navbar() {
     { nombre: 'Facturación', ruta: '/facturacion' },
     { nombre: 'Registro Ventas', ruta: '/ventas' },
     { nombre: 'Estadísticas', ruta: '/estadisticas' },
+    { nombre: 'Personal', ruta: '/trabajadores' }, // <-- Módulo añadido
   ];
 
   return (
@@ -36,12 +37,14 @@ export default function Navbar() {
         Tienda Control
       </div>
 
-      {/* Enlaces de Navegación con Scroll Horizontal en Móviles para que no se rompa */}
+      {/* Enlaces de Navegación */}
       <div className="nav-links-wrapper" style={{
         display: 'flex',
         gap: '8px',
         height: '100%',
-        alignItems: 'center'
+        alignItems: 'center',
+        overflowX: 'auto', // Asegura que no se rompa si agregamos más módulos
+        paddingRight: '10px'
       }}>
         {enlaces.map((enlace) => {
           const esActivo = pathname === enlace.ruta;
@@ -60,7 +63,7 @@ export default function Navbar() {
                 backgroundColor: esActivo ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
                 transition: 'all 0.2s ease',
                 border: esActivo ? '1px solid rgba(59, 130, 246, 0.2)' : '1px solid transparent',
-                boxSizing: 'border-box'
+                whiteSpace: 'nowrap'
               }}
               onMouseOver={e => {
                 if (!esActivo) {
