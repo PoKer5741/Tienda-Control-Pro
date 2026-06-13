@@ -37,7 +37,7 @@ export async function actualizarTrabajador(id, nombre, correo, rol, cedula, cont
             .input('rol', sql.VarChar(50), rol)
             .input('cedula', sql.VarChar(20), cedula);
             
-        // Solo mandamos la contraseña si el admin digitó una nueva
+        
         if (contrasena) {
             request.input('contrasena', sql.VarChar(255), contrasena);
         }
@@ -57,6 +57,21 @@ export async function alternarEstadoTrabajador(id) {
             .execute('sp_AlternarEstadoTrabajador');
         return { success: true };
     } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+export async function validarAccesoAdministrador(correo, contrasena) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('correo', sql.VarChar(100), correo)
+            .input('contrasena', sql.VarChar(255), contrasena)
+            .execute('sp_ValidarAccesoAdmin');
+            
+        return { success: true };
+    } catch (err) {
+        console.error('[SEGURIDAD] Intento de acceso fallido:', err.message);
         return { success: false, error: err.message };
     }
 }

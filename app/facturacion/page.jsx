@@ -87,22 +87,48 @@ export default function FacturacionPage() {
     }
   };
 
-  // Lógica de Carrito
+  // Lógica de Carrito (Con Agrupación Inteligente Integrada)
   const agregarAlCarrito = (e) => {
     e.preventDefault();
     if (!codigoBusqueda || !cantidadVenta) return;
 
+    // 1. Buscamos el producto
     const producto = inventario.find(p => p.codigo === codigoBusqueda || p.nombre === codigoBusqueda);
     if (!producto) return alert('Producto no válido o descontinuado.');
-    if (producto.cantidad < parseInt(cantidadVenta)) return alert('Stock insuficiente en bodega.');
 
-    const nuevoItem = {
-      id: producto.id, codigo: producto.codigo, nombre: producto.nombre,
-      precio: producto.precio, porcentaje_iva: producto.porcentaje_iva, cantidad: parseInt(cantidadVenta)
-    };
+    const cantidadAñadir = parseInt(cantidadVenta);
 
-    setCarrito([...carrito, nuevoItem]);
-    setCodigoBusqueda(''); setCantidadVenta(1);
+    // 2. Verificamos si ya existe en el carrito
+    const itemExistenteIndex = carrito.findIndex(item => item.id === producto.id);
+
+    if (itemExistenteIndex >= 0) {
+      // SI YA EXISTE: Sumamos cantidades
+      const nuevaCantidadTotal = carrito[itemExistenteIndex].cantidad + cantidadAñadir;
+
+      // Validamos contra stock real
+      if (producto.cantidad < nuevaCantidadTotal) {
+        return alert(`Stock insuficiente. Ya tienes ${carrito[itemExistenteIndex].cantidad} en el carrito y solo hay ${producto.cantidad} unidades físicas en bodega.`);
+      }
+
+      const nuevoCarrito = [...carrito];
+      nuevoCarrito[itemExistenteIndex].cantidad = nuevaCantidadTotal;
+      setCarrito(nuevoCarrito);
+
+    } else {
+      // SI ES NUEVO: Validamos e insertamos fila
+      if (producto.cantidad < cantidadAñadir) return alert('Stock insuficiente en bodega.');
+
+      const nuevoItem = {
+        id: producto.id, codigo: producto.codigo, nombre: producto.nombre,
+        precio: producto.precio, porcentaje_iva: producto.porcentaje_iva, cantidad: cantidadAñadir
+      };
+
+      setCarrito([...carrito, nuevoItem]);
+    }
+
+    // 3. Limpiar inputs
+    setCodigoBusqueda(''); 
+    setCantidadVenta(1);
   };
 
   const removerDelCarrito = (index) => {
