@@ -1,34 +1,51 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { validarAccesoAdministrador } from '@/app/actions/trabajadoresActions';
+import { validarAccesoAdministrador, verificarSesionActiva } from '@/app/actions/trabajadoresActions';
 
 export default function AccesoAdministrador({ children }) {
   const [autenticado, setAutenticado] = useState(false);
+  const [verificando, setVerificando] = useState(true); // Nuevo estado de carga inicial
   const [correo, setCorreo] = useState('');
   const [contrasena, setContrasena] = useState('');
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState('');
   
-  // Instanciamos el enrutador para poder navegar fuera del bloqueo
   const router = useRouter();
+
+  // Comprobar la cookie de sesión al montar el componente
+  useEffect(() => {
+    const comprobarSesion = async () => {
+      const res = await verificarSesionActiva();
+      if (res.autenticado) {
+        setAutenticado(true);
+      }
+      setVerificando(false);
+    };
+    comprobarSesion();
+  }, []);
 
   const verificarAcceso = async (e) => {
     e.preventDefault();
     setCargando(true);
     setError('');
 
-    const res = await validarAccesoAdministrador(correo, contrasena);
+    const correoLimpio = correo.trim().toLowerCase();
+    const contrasenaLimpia = contrasena.trim();
+
+    const res = await validarAccesoAdministrador(correoLimpio, contrasenaLimpia);
 
     if (res.success) {
       setAutenticado(true);
     } else {
       setError(res.error);
-      setContrasena(''); // Limpiamos la contraseña por seguridad si falla
+      setContrasena(''); 
     }
     setCargando(false);
   };
 
+  // Mostrar una pantalla vacía o de carga mientras verifica la cookie
+  if (verificando) return <div style={{ backgroundColor: '#0B0E14', height: '100vh' }} />;
   if (autenticado) return <>{children}</>;
 
   return (
@@ -62,7 +79,6 @@ export default function AccesoAdministrador({ children }) {
                 {cargando ? 'Verificando Firmas...' : 'Autorizar Acceso'}
             </button>
             
-            {/* NUEVO BOTÓN DE ESCAPE */}
             <button type="button" onClick={() => router.push('/')} style={{ width: '100%', padding: '14px', backgroundColor: 'transparent', border: '1px solid var(--x-border)', color: 'var(--x-text-main)', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', textTransform: 'uppercase', letterSpacing: '1px' }}>
                 Volver a Inicio
             </button>

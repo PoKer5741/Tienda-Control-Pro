@@ -4,6 +4,7 @@ import { obtenerProductos, registrarNuevoProducto, actualizarProducto } from '@/
 import { obtenerCategorias } from '@/app/actions/categoriasActions';
 import SelectPremium from '@/components/SelectPremium';
 import Modal from '@/components/Modal';
+import BotonExportar from '@/components/BotonExportar';  
 
 export default function InventarioPage() {
   const [productos, setProductos] = useState([]);
@@ -11,12 +12,11 @@ export default function InventarioPage() {
   const [cargando, setCargando] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // Estados de Filtros (¡AQUÍ AGREGAMOS EL NUEVO FILTRO!)
+   
   const [busqueda, setBusqueda] = useState('');
   const [filtroCat, setFiltroCat] = useState('Todos');
   const [filtroEstadoBusqueda, setFiltroEstadoBusqueda] = useState('Activos'); 
-
-  // Estados del Formulario
+ 
   const [idEditando, setIdEditando] = useState(null);
   const [codigo, setCodigo] = useState('');
   const [nombre, setNombre] = useState('');
@@ -157,6 +157,15 @@ export default function InventarioPage() {
     { valor: 'Descontinuado', etiqueta: 'DESCONTINUADO' }
   ];
 
+  const columnasExportacion = [
+    { encabezado: 'Código', llave: 'codigo' },
+    { encabezado: 'Descripción', llave: 'nombre' },
+    { encabezado: 'Categoría', llave: 'categoria' },
+    { encabezado: 'Costo Unit.', llave: 'costo' },
+    { encabezado: 'Precio Venta', llave: 'precio' },
+    { encabezado: 'Stock Físico', llave: 'cantidad' },
+    { encabezado: 'Estado', llave: 'estado_comercial' }
+];
   return (
     <main style={{ padding: '2rem', maxWidth: '1600px', margin: '0 auto' }}>
       
@@ -285,6 +294,17 @@ export default function InventarioPage() {
       {/* TABLA CATÁLOGO CENTRAL */}
       <div style={{ background: 'var(--x-bg-card)', padding: '25px', borderRadius: '12px', border: '1px solid var(--x-border)' }}>
         
+        {/* CABECERA CON EXPORTACIÓN */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3 style={{ margin: 0, color: '#fff', fontSize: '18px' }}>Inventario Valorado</h3>
+            <BotonExportar 
+                datos={productosFiltrados} 
+                columnas={columnasExportacion} 
+                titulo="Reporte de Inventario Valorado y Existencias" 
+                nombreArchivo="Inventario_TCP" 
+            />
+        </div>
+
         {cargando ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--x-text-muted)' }}>Sincronizando existencias...</div>
         ) : productosFiltrados.length === 0 ? (

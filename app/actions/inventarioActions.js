@@ -1,5 +1,6 @@
 'use server'
 import { poolPromise, sql } from '@/lib/db';
+import { registrarLogAuditoria } from './auditoriaActions';
 
 export async function obtenerProductos() {
     try {
@@ -27,6 +28,8 @@ export async function registrarNuevoProducto(codigo, nombre, categoriaId, costo,
             .input('fecha_vencimiento', sql.Date, fechaVencimiento ? new Date(fechaVencimiento) : null)
             .input('estado_comercial', sql.VarChar(20), estadoComercial || 'Activo')
             .execute('sp_RegistrarProducto');
+            
+        await registrarLogAuditoria('Inventario', 'REGISTRO', `Se registró un nuevo producto: ${codigo} - ${nombre}`);
         return { success: true };
     } catch (err) {
         return { success: false, error: err.message };
@@ -50,6 +53,8 @@ export async function actualizarProducto(id, codigo, nombre, categoriaId, costo,
             .input('fecha_vencimiento', sql.Date, fechaVencimiento ? new Date(fechaVencimiento) : null)
             .input('estado_comercial', sql.VarChar(20), estadoComercial || 'Activo')
             .execute('sp_ActualizarProducto');
+            
+        await registrarLogAuditoria('Inventario', 'ACTUALIZACIÓN', `Se modificó la ficha del producto ID: ${id} (${codigo})`);
         return { success: true };
     } catch (err) {
         return { success: false, error: err.message };
@@ -59,10 +64,13 @@ export async function actualizarProducto(id, codigo, nombre, categoriaId, costo,
 export async function eliminarProducto(id) {
     try {
         const pool = await poolPromise;
-        // Solo para productos que NUNCA han sido facturados (si ya se facturó, SQL lanzará error por integridad referencial)
+        
         await pool.request()
             .input('id', sql.Int, parseInt(id))
-            .query('DELETE FROM Productos WHERE id = @id');
+            .execute('sp_EliminarProducto');
+            
+        await registrarLogAuditoria('Inventario', 'DESCONTINUAR', `Se cambió el estado a Inactivo (Soft Delete) del producto ID: ${id}`);
+        
         return { success: true };
     } catch (err) {
         return { success: false, error: err.message };

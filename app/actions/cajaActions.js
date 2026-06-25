@@ -1,50 +1,48 @@
 'use server'
 import { poolPromise, sql } from '@/lib/db';
+ 
+import { verificarSesionActiva } from './trabajadoresActions'; 
 
 export async function verificarCajaAbierta() {
     try {
         const pool = await poolPromise;
+        
         const result = await pool.request().execute('sp_VerificarCajaAbierta');
-        return { success: true, caja: result.recordset[0] || null };
+        return { success: true, datos: result.recordset[0] || null };
     } catch (err) {
         return { success: false, error: err.message };
     }
 }
 
-export async function abrirCajaTransaccional(correo, contrasena, montoApertura) {
+export async function abrirCajaTransaccional(fondoInicial) {
     try {
-        const pool = await poolPromise;
-        await pool.request()
-            .input('correo', sql.VarChar(100), correo)
-            .input('contrasena', sql.VarChar(255), contrasena)
-            .input('monto_apertura', sql.Decimal(10, 2), parseFloat(montoApertura))
-            .execute('sp_AbrirCajaConAutenticacion');
-        return { success: true };
-    } catch (err) {
-        console.error('[AUTH ERROR] Fallo en apertura de caja:', err.message);
-        return { success: false, error: err.message };
-    }
-}
+        const sesion = await verificarSesionActiva();
+        const responsable = sesion?.autenticado ? sesion.usuario.nombre : 'Operador POS';
 
-export async function obtenerVentasTurno(cajaTurnoId) {
-    try {
         const pool = await poolPromise;
         const result = await pool.request()
-            .input('caja_turno_id', sql.Int, parseInt(cajaTurnoId))
-            .execute('sp_ObtenerVentasTurno');
-        return { success: true, datos: result.recordset || [] };
+            .input('fondo_inicial', sql.Decimal(10, 2), parseFloat(fondoInicial))
+            .input('abierta_por', sql.VarChar(100), responsable)
+            .execute('sp_AbrirCaja');  
+            
+        return { success: true };
     } catch (err) {
         return { success: false, error: err.message };
     }
 }
 
-export async function cerrarCajaTransaccional(cajaTurnoId, montoReal) {
+export async function cerrarCajaTransaccional(cajaId, montoFisicoReal) {
     try {
+        const sesion = await verificarSesionActiva();
+        const responsable = sesion?.autenticado ? sesion.usuario.nombre : 'Operador POS';
+
         const pool = await poolPromise;
         await pool.request()
-            .input('caja_turno_id', sql.Int, parseInt(cajaTurnoId))
-            .input('monto_efectivo_real', sql.Decimal(10, 2), parseFloat(montoReal))
-            .execute('sp_CerrarCaja');
+            .input('caja_id', sql.Int, parseInt(cajaId))
+            .input('monto_final_real', sql.Decimal(10, 2), parseFloat(montoFisicoReal))
+            .input('cerrada_por', sql.VarChar(100), responsable)
+            .execute('sp_CerrarCaja'); // Asegúrate de tener este SP o cámbialo por un UPDATE
+            
         return { success: true };
     } catch (err) {
         return { success: false, error: err.message };
@@ -61,12 +59,13 @@ export async function obtenerHistorialArqueos() {
     }
 }
 
-export async function obtenerDesgloseMetodosTurno(cajaTurnoId) {
+export async function obtenerDesgloseMetodosTurno(cajaId) {
     try {
         const pool = await poolPromise;
         const result = await pool.request()
-            .input('caja_turno_id', sql.Int, parseInt(cajaTurnoId))
+            .input('caja_id', sql.Int, parseInt(cajaId))
             .execute('sp_ObtenerDesgloseMetodosTurno');
+            
         return { success: true, datos: result.recordset || [] };
     } catch (err) {
         return { success: false, error: err.message };

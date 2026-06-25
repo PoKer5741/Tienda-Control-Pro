@@ -21,7 +21,7 @@ export default function EstadisticasPage() {
     setCargando(false);
   };
 
-  // Convertir fecha SQL "YYYY-MM-DD" a día corto ("lun", "mar", etc.)
+ 
   const formatearDia = (fechaStr) => {
     const [y, m, d] = fechaStr.split('-');
     const fecha = new Date(y, m - 1, d);
@@ -31,12 +31,20 @@ export default function EstadisticasPage() {
   if (cargando) return <main style={{ padding: '2rem', color: 'var(--x-text-muted)' }}>Procesando modelos de rendimiento financiero...</main>;
   if (!metricas) return <main style={{ padding: '2rem', color: 'var(--danger-red)' }}>Error al cargar los datos del servidor.</main>;
 
-  const { valorTotalInventario, totalProductos, ingresosTotales, topProductos, stockCritico, ventasSieteDias } = metricas;
 
-  // Matemática para escalar las gráficas dinámicamente
-  const maxUnidadesVendidas = topProductos.length > 0 ? Math.max(...topProductos.map(p => p.unidades_vendidas)) : 1;
-  const maxVentaDia = ventasSieteDias.length > 0 ? Math.max(...ventasSieteDias.map(v => v.total_dia)) : 1;
-  const picoHistorico = maxVentaDia === 0 ? 1 : maxVentaDia; // Evitar divisiones por cero si no hay ventas en 7 días
+  const { 
+      valorTotalInventario = 0, 
+      totalProductos = 0, 
+      ingresosTotales = 0, 
+      topProductos = [], 
+      stockCritico = [], 
+      ventasSieteDias = [] 
+  } = metricas;
+
+
+  const maxUnidadesVendidas = topProductos?.length > 0 ? Math.max(...topProductos.map(p => p.unidades_vendidas)) : 1;
+  const maxVentaDia = ventasSieteDias?.length > 0 ? Math.max(...ventasSieteDias.map(v => v.total_dia)) : 1;
+  const picoHistorico = maxVentaDia === 0 ? 1 : maxVentaDia; // Evitar divisiones por ceroonst picoHistorico = maxVentaDia === 0 ? 1 : maxVentaDia; // Evitar divisiones por cero si no hay ventas en 7 días
 
   return (
     <main style={{ padding: '2.5rem 2rem', maxWidth: '1400px', margin: '0 auto' }}>

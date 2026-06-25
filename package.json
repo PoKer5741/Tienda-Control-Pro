@@ -9,12 +9,17 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.3",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "msnodesqlv8": "^5.2.0",
     "mssql": "^12.5.5",
     "next": "^15.3.3",
     "nodemailer": "^8.0.11",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "eslint": "^9.28.0",
