@@ -1,258 +1,377 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { obtenerCompras, registrarCompraConFirma } from '@/app/actions/comprasActions';
-import { obtenerProveedores } from '@/app/actions/proveedoresActions';
-import { obtenerCategorias } from '@/app/actions/categoriasActions';
-import BuscadorPremium from '@/components/BuscadorPremium';
+import { useState, useEffect, Fragment } from 'react';
+import { obtenerHistorialVentas } from '@/app/actions/ventasActions';
+import { anularFacturaTransaccional } from '@/app/actions/anulacionesActions';
+import SelectPremium from '@/components/SelectPremium';
 
-export default function ComprasPage() {
-  const [compras, setCompras] = useState([]);
-  const [proveedores, setProveedores] = useState([]);
-  const [categorias, setCategorias] = useState([]);
+export default function HistorialVentasPage() {
+  const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [facturaExpandida, setFacturaExpandida] = useState(null);
 
-  // Inputs del Formulario Unificado
-  const [proveedorId, setProveedorId] = useState('');
-  const [codigo, setCodigo] = useState('');
-  const [nombre, setNombre] = useState('');
-  const [categoriaId, setCategoriaId] = useState('');
-  const [cantidad, setCantidad] = useState('');
-  const [costoUnitario, setCostoUnitario] = useState('');
-  const [precioVenta, setPrecioVenta] = useState('');
-  
-  // Campos Obligatorios de Firma Electrónica (Auditoría)
-  const [cedulaEmpleado, setCedulaEmpleado] = useState('');
-  const [contrasenaEmpleado, setContrasenaEmpleado] = useState('');
+  // Estados de Paginación
+  const [paginaActual, setPaginaActual] = useState(1);
+  const [hayMasDatos, setHayMasDatos] = useState(true);
+  const TAMANO_PAGINA = 50;
+
+  // Filtros
+  const [busqueda, setBusqueda] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState('Todos');
+  const [filtroPago, setFiltroPago] = useState('Todos');
 
   useEffect(() => {
-    cargarComponentes();
-  }, []);
+    cargarHistorial(paginaActual);
+  }, [paginaActual]);
 
-  const cargarComponentes = async () => {
+  const cargarHistorial = async (pagina) => {
     setCargando(true);
-    const [resCom, resProv, resCat] = await Promise.all([
-      obtenerCompras(),
-      obtenerProveedores(),
-      obtenerCategorias()
-    ]);
-    if (resCom.success) setCompras(resCom.datos || []);
-    if (resProv.success) setProveedores(resProv.datos || []);
-    if (resCat.success) setCategorias(resCat.datos || []);
+    const respuesta = await obtenerHistorialVentas(pagina, TAMANO_PAGINA);
+    if (respuesta.success) {
+      const datosNuevos = respuesta.datos || [];
+      setFacturas(datosNuevos);
+      setHayMasDatos(datosNuevos.length === TAMANO_PAGINA);
+    } else {
+      alert('Error al cargar historial: ' + respuesta.error);
+    }
     setCargando(false);
   };
 
-  const ejecutarAsentamiento = async (e) => {
-    e.preventDefault();
-    if (!proveedorId || !codigo || !nombre || !categoriaId || !cantidad || !costoUnitario || !precioVenta || !cedulaEmpleado || !contrasenaEmpleado) {
-      return alert('Todos los campos operativos y los datos de firma electronica son estrictamente obligatorios.');
-    }
-
-    const respuesta = await registrarCompraConFirma(
-      proveedorId, 
-      codigo, 
-      nombre, 
-      categoriaId, 
-      cantidad, 
-      costoUnitario, 
-      precioVenta, 
-      cedulaEmpleado, 
-      contrasenaEmpleado
-    );
-
-    if (respuesta.success) {
-      alert('Orden de compra autorizada y asentada. Notificacion enviada a gerencia.');
-      // Se limpian los campos del producto, manteniendo la firma por comodidad operativa
-      setCodigo(''); 
-      setNombre(''); 
-      setCategoriaId(''); 
-      setCantidad(''); 
-      setCostoUnitario(''); 
-      setPrecioVenta('');
-      cargarComponentes();
-    } else {
-      alert('Fallo de Autorizacion: ' + respuesta.error);
+  const manejarAnulacion = async (id, numDoc) => {
+    if (window.confirm(`¿Está seguro de que desea anular el documento ${numDoc} #${id}? Esta acción devolverá el stock al inventario.`)) {
+      const res = await anularFacturaTransaccional(id);
+      if (res.success) {
+        cargarHistorial(paginaActual);
+      } else {
+        alert('Fallo al anular: ' + res.error);
+      }
     }
   };
 
-  // Función de RESTOCK RÁPIDO (Carga los datos del lote seleccionado al instante)
-  const ejecutarRestockRapido = (loteViejo) => {
-      setProveedorId(loteViejo.proveedor_id ? loteViejo.proveedor_id.toString() : '');
-      setCodigo(loteViejo.codigo || '');
-      setNombre(loteViejo.producto_nombre || '');
-      setCategoriaId(loteViejo.categoria_id ? loteViejo.categoria_id.toString() : '');
-      setCantidad(loteViejo.cantidad || '');
-      setCostoUnitario(loteViejo.costo_unitario || '');
-      setPrecioVenta(loteViejo.precio_venta || '');
-      
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const manejarPaginacion = (direccion) => {
+    if (direccion === 'siguiente' && hayMasDatos) {
+        setPaginaActual(prev => prev + 1);
+    } else if (direccion === 'anterior' && paginaActual > 1) {
+        setPaginaActual(prev => prev - 1);
+    }
   };
 
-  // Mapear opciones puras para los buscadores autocompletables
-  const opcionesProveedores = proveedores.map(p => ({ 
-      valor: p.id.toString(), 
-      etiqueta: p.nombre.toUpperCase() 
-  }));
+  // Filtrado en el cliente para el bloque actual
+  const facturasVisibles = facturas.filter(f => {
+    const cumpleTexto = f.id.toString().includes(busqueda) || f.cliente_nombre.toLowerCase().includes(busqueda.toLowerCase());
+    const cumpleEstado = filtroEstado === 'Todos' || f.estado === filtroEstado;
+    const cumplePago = filtroPago === 'Todos' || f.metodo_pago === filtroPago;
+    
+    const fechaDoc = f.fecha ? f.fecha.split(' ')[0] : '';
+    const cumpleDesde = !fechaDesde || fechaDoc >= fechaDesde;
+    const cumpleHasta = !fechaHasta || fechaDoc <= fechaHasta;
 
-  const opcionesCategorias = categorias.map(c => ({ 
-      valor: c.id.toString(), 
-      etiqueta: c.nombre 
-  }));
+    return cumpleTexto && cumpleEstado && cumplePago && cumpleDesde && cumpleHasta;
+  });
 
-  return (
-    <main style={{ padding: '2rem', maxWidth: '1500px', margin: '0 auto' }}>
-      <h2 style={{ marginBottom: '20px', color: 'var(--x-text-main)' }}>Módulo de Abastecimiento Logístico</h2>
+  // ==========================================
+  // NUEVAS FUNCIONES DE EXPORTACIÓN E IMPRESIÓN
+  // ==========================================
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '30px', marginBottom: '40px' }}>
-        
-        {/* PANEL IZQUIERDO: FORMULARIO DE INGRESO */}
-        <form onSubmit={ejecutarAsentamiento} style={{ background: 'var(--x-bg-card)', padding: '25px', borderRadius: '12px', border: '1px solid var(--x-border)', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          
-          <div style={{ borderBottom: '1px solid var(--x-border)', paddingBottom: '10px', marginBottom: '5px' }}>
-            <h3 style={{ margin: 0, fontSize: '18px', color: '#fff' }}>Adquisición de Nuevo Lote</h3>
-          </div>
-          
-          {/* BLOQUE DE FIRMA ELECTRÓNICA MANDATORIA */}
-          <div style={{ backgroundColor: 'rgba(29, 161, 242, 0.05)', padding: '15px', borderRadius: '8px', border: '1px solid rgba(29, 161, 242, 0.2)' }}>
-            <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-primary)', marginBottom: '10px', textTransform: 'uppercase', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-              Firma Electronica de Autorizacion
-            </label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-                <input 
-                    type="text" 
-                    placeholder="Cedula de Identidad" 
-                    value={cedulaEmpleado} 
-                    onChange={e => setCedulaEmpleado(e.target.value)} 
-                    className="crud-input-style" 
-                    style={{ flex: '1', backgroundColor: 'var(--x-bg-base)' }} 
-                    required 
-                />
-                <input 
-                    type="password" 
-                    placeholder="Contrasena de Sistema" 
-                    value={contrasenaEmpleado} 
-                    onChange={e => setContrasenaEmpleado(e.target.value)} 
-                    className="crud-input-style" 
-                    style={{ flex: '1', backgroundColor: 'var(--x-bg-base)' }} 
-                    required 
-                />
+  const imprimirCopiaFactura = (factura) => {
+    const fecha = factura.fecha && factura.fecha !== 'N/A' ? new Date(factura.fecha).toLocaleString() : new Date().toLocaleString();
+    const tipo = factura.tipo_documento || 'Tiquete';
+    
+    const contenido = `
+        <html>
+        <head>
+            <title>Copia Factura #${factura.id}</title>
+            <style>
+                body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; color: #000; }
+                table { width: 100%; font-size: 12px; border-collapse: collapse; }
+                .center { text-align: center; }
+                .right { text-align: right; }
+                .bold { font-weight: bold; }
+                .divider { border-top: 1px dashed #000; margin: 5px 0; }
+                @media print { body { width: 80mm; margin: 0; padding: 0; } }
+            </style>
+        </head>
+        <body>
+            <div class="center">
+                <h3 style="margin:0 0 5px 0;">TIENDA CONTROL PRO</h3>
+                <p style="margin:0;">Golfito, Puntarenas, Costa Rica</p>
+                <p class="bold" style="margin:5px 0;">*** COPIA REIMPRESIÓN ***</p>
+                <p style="margin:0;">${tipo.toUpperCase()} ELECTRÓNICO</p>
+                <p style="margin:0;">N° FAC-${factura.id}</p>
             </div>
-            <div style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginTop: '8px' }}>
-                Esta transaccion requiere credenciales de nivel Operador o Administrador y despachara una auditoria por correo electronico.
+            <div class="divider"></div>
+            <p style="margin:2px 0;">Fecha: ${fecha}</p>
+            <p style="margin:2px 0;">Cliente: ${factura.cliente_nombre}</p>
+            <p style="margin:2px 0;">Método: ${factura.metodo_pago}</p>
+            <div class="divider"></div>
+            <table>
+                <tbody>
+                    ${(factura.detalles || []).map(d => `
+                        <tr>
+                            <td style="padding:2px 0;">${d.producto} (x${d.cantidad})</td>
+                            <td class="right" style="padding:2px 0;">₡${parseFloat(d.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <div class="divider"></div>
+            <div class="right">
+                <p class="bold" style="margin:4px 0 0 0; font-size: 14px;">TOTAL CRC: ₡${parseFloat(factura.total_final || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
             </div>
-          </div>
+            <script>
+                window.onload = function() { window.print(); window.close(); }
+            </script>
+        </body>
+        </html>
+    `;
+    const ventana = window.open('', '_blank', 'width=400,height=600');
+    ventana.document.write(contenido);
+    ventana.document.close();
+  };
 
-          <div style={{ zIndex: 20, borderTop: '1px dashed rgba(255,255,255,0.05)', paddingTop: '10px' }}>
-            <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Entidad Proveedora</label>
-            <BuscadorPremium 
-              opciones={opcionesProveedores}
-              valorSeleccionado={proveedorId}
-              alCambiar={setProveedorId}
-              placeholder="Buscar proveedor..."
-            />
-          </div>
+  const exportarAExcel = () => {
+    let csv = "DOCUMENTO,FECHA,CLIENTE,METODO_PAGO,TOTAL_CRC,ESTADO\n";
+    facturasVisibles.forEach(v => {
+        const clienteClean = (v.cliente_nombre || '').replace(/,/g, ' '); 
+        csv += `${v.tipo_documento} #${v.id},${v.fecha || 'N/A'},${clienteClean},${v.metodo_pago},${v.total_final},${v.estado}\n`;
+    });
+    const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8;" }); 
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Reporte_Ventas_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
 
-          <div style={{ borderTop: '1px dashed rgba(255,255,255,0.05)', paddingTop: '10px' }}>
-            <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Datos de Catalogo</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <input type="text" placeholder="Codigo de Barras / SKU" value={codigo} onChange={e => setCodigo(e.target.value)} className="crud-input-style" />
-              <input type="text" placeholder="Descripcion del Articulo" value={nombre} onChange={e => setNombre(e.target.value)} className="crud-input-style" />
-              
-              <div style={{ zIndex: 19 }}>
-                <BuscadorPremium 
-                  opciones={opcionesCategorias}
-                  valorSeleccionado={categoriaId}
-                  alCambiar={setCategoriaId}
-                  placeholder="Asignar familia contable..."
-                />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ borderTop: '1px dashed rgba(255,255,255,0.05)', paddingTop: '10px' }}>
-            <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Cantidades y Costos</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <div>
-                <input type="number" placeholder="Cantidad" value={cantidad} onChange={e => setQuantity(e.target.value)} className="crud-input-style" />
-              </div>
-              <div>
-                <input type="number" step="0.01" placeholder="Costo Unit. (CRC)" value={costoUnitario} onChange={e => setCostoUnitario(e.target.value)} className="crud-input-style" />
-              </div>
-            </div>
-            <input type="number" step="0.01" placeholder="Actualizar Precio Venta Publico (CRC)" value={precioVenta} onChange={e => setPrecioVenta(e.target.value)} className="crud-input-style" style={{ marginTop: '10px' }} />
-          </div>
-
-          <button type="submit" style={{ backgroundColor: 'var(--success-green)', color: '#fff', border: 'none', padding: '16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Asentar Compra e Inyectar Stock
-          </button>
-        </form>
-
-        
-        <div style={{ background: 'var(--x-bg-card)', padding: '25px', borderRadius: '12px', border: '1px solid var(--x-border)', display: 'flex', flexDirection: 'column' }}>
-          <h3 style={{ margin: 0, fontSize: '18px', color: '#fff', marginBottom: '5px' }}>Bitácora de Lotes Recibidos</h3>
-          <p style={{ margin: '0 0 20px 0', fontSize: '12px', color: 'var(--x-text-muted)' }}>Historial de compras registradas bajo firma electronica.</p>
-
-          {cargando ? (
-            <div style={{ padding: '40px', color: 'var(--x-text-muted)', fontSize: '13px', textAlign: 'center' }}>Consultando base de datos logisticos...</div>
-          ) : compras.length === 0 ? (
-            <div style={{ padding: '40px', color: 'var(--x-text-muted)', fontSize: '13px', textAlign: 'center' }}>No hay registros de abastecimiento asentados.</div>
-          ) : (
-            <div className="table-wrapper" style={{ flex: 1, maxHeight: '600px', overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+  const exportarAPDF = () => {
+    const contenido = `
+        <html>
+        <head>
+            <title>Reporte de Ventas</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; font-weight: bold; }
+                .right { text-align: right; }
+            </style>
+        </head>
+        <body>
+            <h2>Reporte General de Transacciones</h2>
+            <p>Generado el: ${new Date().toLocaleString()}</p>
+            <table>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid var(--x-border)', color: 'var(--x-text-muted)', textAlign: 'left' }}>
-                    <th style={{ padding: '12px 10px' }}>Fecha y Firma</th>
-                    <th style={{ padding: '12px 10px' }}>Catalogo</th>
-                    <th style={{ padding: '12px 10px', textAlign: 'center' }}>Volumen</th>
-                    <th style={{ padding: '12px 10px', textAlign: 'right' }}>Inversion</th>
-                    <th style={{ padding: '12px 10px', textAlign: 'center' }}>Accion</th>
-                  </tr>
+                    <tr>
+                        <th>Documento</th><th>Fecha</th><th>Cliente</th><th>Método</th><th class="right">Total CRC</th><th>Estado</th>
+                    </tr>
                 </thead>
                 <tbody>
-                  {compras.map((c, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid rgba(56,68,77,0.3)', transition: 'background-color 0.2s' }} onMouseOver={e => e.currentTarget.style.backgroundColor = 'var(--x-bg-card-hover)'} onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}>
-                      
-                      <td style={{ padding: '14px 10px' }}>
-                        <div style={{ color: 'var(--x-text-muted)', fontSize: '11px', marginBottom: '3px' }}>{c.fecha ? c.fecha.split(' ')[0] : 'N/A'}</div>
-                        <div style={{ fontWeight: 'bold', color: '#fff' }}>{c.solicitante_nombre}</div>
-                        <div style={{ fontSize: '11px', color: 'var(--x-text-muted)' }}>ID: {c.solicitante_cedula}</div>
-                      </td>
-                      
-                      <td style={{ padding: '14px 10px' }}>
-                        <div style={{ fontWeight: '500', color: '#fff' }}>{c.producto_nombre}</div>
-                        <div style={{ display: 'block', fontSize: '11px', color: 'var(--x-primary)', marginTop: '2px' }}>Prov: {c.proveedor_nombre}</div>
-                      </td>
-                      
-                      <td style={{ padding: '14px 10px', textAlign: 'center' }}>
-                          <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff' }}>{c.cantidad}</span>
-                          <div style={{ fontSize: '10px', color: 'var(--x-text-muted)' }}>a CRC {(c.costo_unitario || 0).toLocaleString()}</div>
-                      </td>
-                      
-                      <td style={{ padding: '14px 10px', textAlign: 'right', color: 'var(--success-green)', fontWeight: 'bold', fontSize: '14px' }}>
-                          CRC {((c.cantidad || 0) * (c.costo_unitario || 0)).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                      </td>
-
-                      <td style={{ padding: '14px 10px', textAlign: 'center' }}>
-                        <button 
-                            type="button"
-                            onClick={() => ejecutarRestockRapido(c)}
-                            style={{ 
-                                backgroundColor: 'transparent', border: '1px solid var(--x-primary)', 
-                                color: 'var(--x-primary)', padding: '6px 12px', borderRadius: '6px', 
-                                fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s'
-                            }}
-                            onMouseOver={e => e.currentTarget.style.backgroundColor = 'rgba(29, 161, 242, 0.1)'}
-                            onMouseOut={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                            Restock Rapido
-                        </button>
-                      </td>
-
-                    </tr>
-                  ))}
+                    ${facturasVisibles.map(v => `
+                        <tr>
+                            <td>${v.tipo_documento} #${v.id}</td>
+                            <td>${v.fecha || 'N/A'}</td>
+                            <td>${v.cliente_nombre}</td>
+                            <td>${v.metodo_pago}</td>
+                            <td class="right">₡${parseFloat(v.total_final || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                            <td>${v.estado}</td>
+                        </tr>
+                    `).join('')}
                 </tbody>
-              </table>
-            </div>
-          )}
+            </table>
+            <script>
+                window.onload = function() { window.print(); window.close(); }
+            </script>
+        </body>
+        </html>
+    `;
+    const ventana = window.open('', '_blank');
+    ventana.document.write(contenido);
+    ventana.document.close();
+  };
+
+  // ==========================================
+
+  const opcionesEstado = [
+    { valor: 'Todos', etiqueta: 'Todos los Estados' },
+    { valor: 'Completado', etiqueta: 'Completado' },
+    { valor: 'Cancelado', etiqueta: 'Anulado / Cancelado' }
+  ];
+
+  const opcionesPago = [
+    { valor: 'Todos', etiqueta: 'Cualquier Medio' },
+    { valor: 'Efectivo', etiqueta: 'Efectivo' },
+    { valor: 'Tarjeta', etiqueta: 'Tarjeta / Datafono' },
+    { valor: 'SINPE', etiqueta: 'SINPE Móvil' },
+    { valor: 'Mixto', etiqueta: 'Mixto' }
+  ];
+
+  return (
+    <main style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+      
+      {/* HEADER CON BOTONES DE EXPORTACIÓN */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px' }}>
+        <div>
+          <h2 style={{ margin: 0, color: 'var(--x-text-main)' }}>Registro de Transacciones</h2>
+          <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: 'var(--x-text-muted)' }}>Historial fiscal y logístico de ventas por bloque.</p>
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={exportarAExcel} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#107c41', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                📄 Exportar Excel
+            </button>
+            <button onClick={exportarAPDF} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#e11d48', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                📑 Exportar PDF
+            </button>
+        </div>
+      </div>
+
+      {/* FILTROS */}
+      <div style={{ background: 'var(--x-bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--x-border)', marginBottom: '25px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'flex-end', position: 'relative', zIndex: 10 }}>
+        <div style={{ flex: '1 1 200px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Búsqueda Rápida</label>
+          <input type="text" placeholder="ID Doc o Cliente..." value={busqueda} onChange={e => setBusqueda(e.target.value)} className="crud-input-style" />
+        </div>
+        <div style={{ flex: '1 1 150px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Estado Comercial</label>
+          <SelectPremium opciones={opcionesEstado} valorSeleccionado={filtroEstado} alCambiar={setFiltroEstado} />
+        </div>
+        <div style={{ flex: '1 1 150px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Medio de Pago</label>
+          <SelectPremium opciones={opcionesPago} valorSeleccionado={filtroPago} alCambiar={setFiltroPago} />
+        </div>
+        <div style={{ flex: '1 1 140px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Desde</label>
+          <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)} className="crud-input-style" style={{ colorScheme: 'dark' }} />
+        </div>
+        <div style={{ flex: '1 1 140px' }}>
+          <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Hasta</label>
+          <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)} className="crud-input-style" style={{ colorScheme: 'dark' }} />
+        </div>
+      </div>
+
+      {/* TABLA PRINCIPAL */}
+      <div style={{ background: 'var(--x-bg-card)', borderRadius: '12px', border: '1px solid var(--x-border)', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
+        {cargando ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--x-text-muted)' }}>Cargando bloque de transacciones...</div>
+        ) : facturasVisibles.length === 0 ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--x-text-muted)' }}>No se encontraron transacciones en esta página.</div>
+        ) : (
+          <div className="table-wrapper">
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--x-border)', color: 'var(--x-text-muted)' }}>
+                  <th style={{ padding: '15px 12px' }}>Documento</th>
+                  <th style={{ padding: '15px 12px' }}>Fecha</th>
+                  <th style={{ padding: '15px 12px' }}>Cliente</th>
+                  <th style={{ padding: '15px 12px' }}>Método</th>
+                  <th style={{ padding: '15px 12px', textAlign: 'right' }}>Total CRC</th>
+                  <th style={{ padding: '15px 12px', textAlign: 'center' }}>Estado</th>
+                  <th style={{ padding: '15px 12px', textAlign: 'center' }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {facturasVisibles.map(f => {
+                  const expandido = facturaExpandida === f.id;
+                  const esAnulada = f.estado === 'Cancelado';
+                  return (
+                    <Fragment key={f.id}>
+                      <tr style={{ borderBottom: '1px solid rgba(56,68,77,0.3)', backgroundColor: expandido ? 'rgba(255,255,255,0.02)' : 'transparent', opacity: esAnulada ? 0.6 : 1 }}>
+                        <td style={{ padding: '14px 12px', fontWeight: 'bold' }}>{f.tipo_documento} #{f.id}</td>
+                        <td style={{ padding: '14px 12px', color: 'var(--x-text-muted)' }}>{f.fecha || 'N/A'}</td>
+                        <td style={{ padding: '14px 12px' }}>{f.cliente_nombre}</td>
+                        <td style={{ padding: '14px 12px' }}>{f.metodo_pago}</td>
+                        <td style={{ padding: '14px 12px', textAlign: 'right', fontWeight: 'bold', color: esAnulada ? 'var(--x-text-muted)' : 'var(--success-green)' }}>
+                          ₡{(f.total_final || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                        </td>
+                        <td style={{ padding: '14px 12px', textAlign: 'center' }}>
+                          <span style={{ backgroundColor: esAnulada ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0, 186, 124, 0.1)', color: esAnulada ? 'var(--danger-red)' : 'var(--success-green)', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
+                            {f.estado.toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ padding: '14px 12px', textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                            <button onClick={() => setFacturaExpandida(expandido ? null : f.id)} style={{ backgroundColor: 'transparent', border: '1px solid var(--x-border)', color: 'var(--x-text-main)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>
+                              {expandido ? 'Ocultar' : 'Detalle'}
+                            </button>
+                            {!esAnulada && (
+                              <button onClick={() => manejarAnulacion(f.id, f.tipo_documento)} style={{ backgroundColor: 'transparent', border: '1px solid var(--danger-red)', color: 'var(--danger-red)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>
+                                Anular
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* DETALLE EXPANDIDO CON BOTÓN DE IMPRESIÓN */}
+                      {expandido && (
+                        <tr style={{ backgroundColor: 'rgba(0,0,0,0.2)', borderBottom: '2px solid var(--x-primary)' }}>
+                          <td colSpan="7" style={{ padding: '20px' }}>
+                            <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                  <h4 style={{ margin: 0, color: 'var(--x-text-main)', fontSize: '13px', textTransform: 'uppercase' }}>Desglose de Artículos</h4>
+                                  <button onClick={() => imprimirCopiaFactura(f)} style={{ backgroundColor: 'var(--x-bg-base)', border: '1px solid var(--x-border)', color: 'var(--x-primary)', padding: '6px 15px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>
+                                      🖨️ Imprimir Copia
+                                  </button>
+                              </div>
+                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                <thead>
+                                  <tr style={{ borderBottom: '1px solid var(--x-border)' }}>
+                                    <th style={{ padding: '8px 4px', textAlign: 'left', color: 'var(--x-text-muted)' }}>SKU</th>
+                                    <th style={{ padding: '8px 4px', textAlign: 'left', color: 'var(--x-text-muted)' }}>Producto</th>
+                                    <th style={{ padding: '8px 4px', textAlign: 'center', color: 'var(--x-text-muted)' }}>Cant.</th>
+                                    <th style={{ padding: '8px 4px', textAlign: 'right', color: 'var(--x-text-muted)' }}>Precio Unit.</th>
+                                    <th style={{ padding: '8px 4px', textAlign: 'right', color: 'var(--x-text-muted)' }}>Subtotal</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {f.detalles && f.detalles.length > 0 ? f.detalles.map((d, idx) => (
+                                    <tr key={idx} style={{ borderBottom: '1px dotted rgba(255,255,255,0.05)' }}>
+                                      <td style={{ padding: '8px 4px', fontFamily: 'monospace', color: 'var(--x-text-muted)' }}>{d.codigo || 'N/A'}</td>
+                                      <td style={{ padding: '8px 4px' }}>{d.producto}</td>
+                                      <td style={{ padding: '8px 4px', textAlign: 'center' }}>{d.cantidad}</td>
+                                      <td style={{ padding: '8px 4px', textAlign: 'right' }}>₡{(d.precio_unitario || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                      <td style={{ padding: '8px 4px', textAlign: 'right', fontWeight: 'bold' }}>₡{(d.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                    </tr>
+                                  )) : (
+                                    <tr>
+                                      <td colSpan="5" style={{ padding: '8px 4px', color: 'var(--x-text-muted)', textAlign: 'center' }}>No hay detalles registrados.</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        
+        {/* Controles de Paginación */}
+        <div style={{ padding: '15px', borderTop: '1px solid var(--x-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', color: 'var(--x-text-muted)' }}>
+            Página {paginaActual}
+          </span>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button 
+                onClick={() => manejarPaginacion('anterior')} 
+                disabled={paginaActual === 1 || cargando}
+                style={{ padding: '8px 16px', backgroundColor: paginaActual === 1 ? 'rgba(255,255,255,0.05)' : 'var(--x-bg-base)', border: '1px solid var(--x-border)', color: paginaActual === 1 ? 'var(--x-text-muted)' : '#fff', borderRadius: '6px', cursor: paginaActual === 1 ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+            >
+                Anterior
+            </button>
+            <button 
+                onClick={() => manejarPaginacion('siguiente')} 
+                disabled={!hayMasDatos || cargando}
+                style={{ padding: '8px 16px', backgroundColor: !hayMasDatos ? 'rgba(255,255,255,0.05)' : 'var(--x-bg-base)', border: '1px solid var(--x-border)', color: !hayMasDatos ? 'var(--x-text-muted)' : '#fff', borderRadius: '6px', cursor: !hayMasDatos ? 'not-allowed' : 'pointer', fontSize: '12px', fontWeight: 'bold' }}
+            >
+                Siguiente
+            </button>
+          </div>
         </div>
 
       </div>

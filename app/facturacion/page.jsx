@@ -6,6 +6,7 @@ import { obtenerClientes, registrarCliente } from '@/app/actions/clientesActions
 import { enviarFacturaCorreo } from '@/app/actions/emailActions';
 
 export default function FacturacionPage() {
+  // --- ESTADOS ORIGINALES DEL COMPONENTE ---
   const [inventario, setInventario] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [cajaAbierta, setCajaAbierta] = useState(false);
@@ -21,7 +22,6 @@ export default function FacturacionPage() {
   const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
 
   const [mostrarModalPago, setMostrarModalPago] = useState(false);
-  const [metodoPago, setMetodoPago] = useState('Efectivo');
   const [montoIngresado, setMontoIngresado] = useState('');
   const [notasFactura, setNotasFactura] = useState('');
   
@@ -34,6 +34,19 @@ export default function FacturacionPage() {
   const [nombreEspera, setNombreEspera] = useState('');
 
   const [facturaImpresion, setFacturaImpresion] = useState(null);
+
+  const [metodoPago, setMetodoPago] = useState('Efectivo'); 
+  const [montosMixtos, setMontosMixtos] = useState({ efectivo: '', sinpe: '', tarjeta: '' });
+  const totalFactura = carrito.reduce((acc, item) => acc + (item.subtotalFinal || 0), 0);
+  const totalMixtoIngresado = (parseFloat(montosMixtos.efectivo) || 0) + 
+                              (parseFloat(montosMixtos.sinpe) || 0) + 
+                              (parseFloat(montosMixtos.tarjeta) || 0);
+  const saldoPendiente = totalFactura - totalMixtoIngresado;
+  const vueltoMixto = totalMixtoIngresado > totalFactura ? totalMixtoIngresado - totalFactura : 0;
+  const puedeCobrar = metodoPago === 'Mixto' ? totalMixtoIngresado >= totalFactura : true;
+
+ 
+  
 
   useEffect(() => { cargarSistemas(); }, []);
 
@@ -69,7 +82,9 @@ export default function FacturacionPage() {
             return;
         }
 
-        if (e.key.length === 1) buffer = (diff < 25 || buffer.length === 0) ? buffer + e.key : e.key;
+         
+         if (!e.key) return;
+         if (e.key.length === 1) buffer = (diff < 25 || buffer.length === 0) ? buffer + e.key : e.key;
     };
 
     window.addEventListener('keydown', manejarTecladoGlobal, true);
@@ -190,14 +205,67 @@ export default function FacturacionPage() {
   };
 
   const ejecutarFacturacion = async () => {
-    if (!pagoValido || !clienteSeleccionado) return;
+    // 1. Validamos la seguridad del botón
+    const totalMixtoIngresado = (parseFloat(montosMixtos.efectivo) || 0) + 
+                                (parseFloat(montosMixtos.sinpe) || 0) + 
+                                (parseFloat(montosMixtos.tarjeta) || 0);
+    
+    const esPagoValido = metodoPago === 'Mixto' 
+        ? totalMixtoIngresado >= totalFinal 
+        : (parseFloat(montoIngresado) || 0) >= totalFinal;
+
+    if (!esPagoValido || !clienteSeleccionado) return;
+
+     
     const btn = document.getElementById('btn-procesar');
     if(btn) btn.innerText = 'PROCESANDO...';
     
+     
+    let enviarEfectivo = 0;
+    let enviarSinpe = 0;
+    let enviarTarjeta = 0;
+
+    if (metodoPago === 'Mixto') {
+        enviarEfectivo = parseFloat(montosMixtos.efectivo) || 0;
+        enviarSinpe = parseFloat(montosMixtos.sinpe) || 0;
+        enviarTarjeta = parseFloat(montosMixtos.tarjeta) || 0;
+    } else if (metodoPago === 'Efectivo') {
+        enviarEfectivo = parseFloat(montoIngresado) || totalFinal;
+    } else if (metodoPago === 'SINPE') {
+        enviarSinpe = parseFloat(montoIngresado) || totalFinal;
+    } else if (metodoPago === 'Tarjeta') {
+        enviarTarjeta = parseFloat(montoIngresado) || totalFinal;
+    }
+
+    
     const respuesta = await procesarVentaTransaccional(
-        clienteSeleccionado.id, tipoDocumento, metodoPago, subtotalBruto, totalDescuentos, 
-        totalImpuestos, totalFinal, ingresadoNum, vuelto, notasFactura, carrito
+        clienteSeleccionado.id, 
+        tipoDocumento, 
+        metodoPago, 
+        subtotalBruto, 
+        totalDescuentos, 
+        totalImpuestos, 
+        totalFinal, 
+        enviarEfectivo,  
+        enviarSinpe,      
+        enviarTarjeta,    
+        notasFactura, 
+        carrito
     );
+
+    if (respuesta.success) {
+        alert(`¡Factura #${respuesta.facturaId} generada con éxito!`);
+         
+        setMostrarModalPago(false);
+        setCarrito([]);
+        setBusquedaCliente('CLIENTE CONTADO');
+        setClienteSeleccionado(clientes.find(c => c.cedula === '000000000') || null);
+        setNotasFactura('');
+        setMontosMixtos({ efectivo: '', sinpe: '', tarjeta: '' });  
+    } else {
+        alert('Fallo al asentar la factura: ' + respuesta.error);
+        if(btn) btn.innerText = 'ASENTAR';
+    }
     
     if (respuesta.success) {
         const fac = respuesta.facturaId;
@@ -237,35 +305,99 @@ export default function FacturacionPage() {
       {mostrarModalPago && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '15px' }}>
             <div style={{ background: 'var(--x-bg-card)', border: '1px solid var(--x-border)', borderRadius: '12px', width: '100%', maxWidth: '450px', overflow: 'hidden' }}>
-                <div style={{ backgroundColor: 'var(--x-primary)', padding: '15px', textAlign: 'center' }}><h3 style={{ margin: 0, color: '#fff' }}>Emitir {tipoDocumento}</h3></div>
+                <div style={{ backgroundColor: 'var(--x-primary)', padding: '15px', textAlign: 'center' }}>
+                    <h3 style={{ margin: 0, color: '#fff' }}>Emitir {tipoDocumento}</h3>
+                </div>
                 <div style={{ padding: '25px' }}>
-                    <div style={{ textAlign: 'center', marginBottom: '15px', fontSize: '14px' }}>Cliente: <span style={{ color: '#fff', fontWeight: 'bold' }}>{clienteSeleccionado?.nombre}</span></div>
+                    <div style={{ textAlign: 'center', marginBottom: '15px', fontSize: '14px' }}>
+                        Cliente: <span style={{ color: '#fff', fontWeight: 'bold' }}>{clienteSeleccionado?.nombre}</span>
+                    </div>
 
+                    {/* PANEL DE TOTALES */}
                     <div style={{ backgroundColor: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '8px', marginBottom: '15px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: 'var(--x-text-muted)' }}><span>Bruto:</span><span>₡{subtotalBruto.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: 'var(--danger-red)' }}><span>Descuentos:</span><span>- ₡{totalDescuentos.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', color: 'var(--x-text-muted)' }}><span>I.V.A.:</span><span>₡{totalImpuestos.toLocaleString(undefined, {minimumFractionDigits: 2})}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: 'var(--x-text-muted)' }}><span>Bruto:</span><span>₡{subtotalBruto?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: 'var(--danger-red)' }}><span>Descuentos:</span><span>- ₡{totalDescuentos?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', color: 'var(--x-text-muted)' }}><span>I.V.A.:</span><span>₡{totalImpuestos?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span></div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--x-border)', fontSize: '18px', fontWeight: 'bold' }}>
-                            <span>A COBRAR</span><span style={{ color: 'var(--success-green)' }}>₡{totalFinal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            <span>A COBRAR</span><span style={{ color: 'var(--success-green)' }}>₡{totalFinal?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span>
                         </div>
                     </div>
 
+                    {/* BOTONES DE SELECCIÓN DE MÉTODO (AHORA CON MIXTO) */}
                     <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
-                        {['Efectivo', 'SINPE', 'Tarjeta'].map(met => (
-                            <button key={met} onClick={() => {setMetodoPago(met); setMontoIngresado(met!=='Efectivo' ? totalFinal.toString() : '');}} style={{ flex: 1, padding: '10px 0', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', border: metodoPago === met ? `2px solid var(--x-primary)` : '1px solid var(--x-border)', backgroundColor: 'transparent', color: '#fff' }}>{met.toUpperCase()}</button>
+                        {['Efectivo', 'SINPE', 'Tarjeta', 'Mixto'].map(met => (
+                            <button 
+                                key={met} 
+                                onClick={() => {
+                                    setMetodoPago(met); 
+                                    // Auto-completado inteligente
+                                    if (met !== 'Efectivo' && met !== 'Mixto') setMontoIngresado(totalFinal.toString());
+                                    if (met === 'Efectivo') setMontoIngresado('');
+                                }} 
+                                style={{ 
+                                    flex: 1, padding: '10px 0', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px',
+                                    border: metodoPago === met ? `2px solid var(--x-primary)` : '1px solid var(--x-border)', 
+                                    backgroundColor: metodoPago === met ? 'rgba(29, 161, 242, 0.1)' : 'transparent', 
+                                    color: metodoPago === met ? 'var(--x-primary)' : '#fff' 
+                                }}>
+                                {met.toUpperCase()}
+                            </button>
                         ))}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-                        <input type="number" value={montoIngresado} onChange={(e) => setMontoIngresado(e.target.value)} disabled={metodoPago !== 'Efectivo'} className="crud-input-style" placeholder="Monto recibido CRC" style={{ flex: 1, textAlign: 'right', fontWeight: 'bold', fontSize: '16px' }} />
-                        {metodoPago === 'Efectivo' && <button onClick={() => setMontoIngresado(totalFinal.toString())} className="crud-input-style" style={{cursor: 'pointer', width:'auto'}}>Exacto</button>}
-                    </div>
+                    {/* RENDERIZADO CONDICIONAL: MIXTO VS NORMAL */}
+                    {metodoPago === 'Mixto' ? (
+                        <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '15px', borderRadius: '8px', border: '1px dashed var(--x-border)', marginBottom: '15px' }}>
+                            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '11px', color: 'var(--x-text-muted)', display: 'block', marginBottom: '5px' }}>Efectivo</label>
+                                    <input type="number" placeholder="₡0" value={montosMixtos.efectivo} onChange={e => setMontosMixtos({...montosMixtos, efectivo: e.target.value})} className="crud-input-style" style={{ padding: '8px', fontSize: '13px' }} />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '11px', color: '#a855f7', display: 'block', marginBottom: '5px' }}>SINPE</label>
+                                    <input type="number" placeholder="₡0" value={montosMixtos.sinpe} onChange={e => setMontosMixtos({...montosMixtos, sinpe: e.target.value})} className="crud-input-style" style={{ padding: '8px', fontSize: '13px' }} />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ fontSize: '11px', color: 'var(--x-primary)', display: 'block', marginBottom: '5px' }}>Tarjeta</label>
+                                    <input type="number" placeholder="₡0" value={montosMixtos.tarjeta} onChange={e => setMontosMixtos({...montosMixtos, tarjeta: e.target.value})} className="crud-input-style" style={{ padding: '8px', fontSize: '13px' }} />
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: totalMixtoIngresado >= totalFinal ? 'var(--success-green)' : 'var(--danger-red)' }}>
+                                <span>{totalMixtoIngresado >= totalFinal ? 'Vuelto a entregar:' : 'Saldo Pendiente:'}</span>
+                                <span>₡{totalMixtoIngresado >= totalFinal ? (totalMixtoIngresado - totalFinal).toLocaleString(undefined, {minimumFractionDigits: 2}) : (totalFinal - totalMixtoIngresado).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{ marginBottom: '15px' }}>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <input type="number" value={montoIngresado} onChange={(e) => setMontoIngresado(e.target.value)} disabled={metodoPago !== 'Efectivo'} className="crud-input-style" placeholder="Monto recibido CRC" style={{ flex: 1, textAlign: 'right', fontWeight: 'bold', fontSize: '16px' }} />
+                                {metodoPago === 'Efectivo' && <button onClick={() => setMontoIngresado(totalFinal.toString())} className="crud-input-style" style={{cursor: 'pointer', width:'auto'}}>Exacto</button>}
+                            </div>
+                            {metodoPago === 'Efectivo' && (parseFloat(montoIngresado) || 0) > totalFinal && (
+                                <div style={{ textAlign: 'right', marginTop: '8px', color: 'var(--success-green)', fontWeight: 'bold', fontSize: '14px' }}>
+                                    Vuelto: ₡{((parseFloat(montoIngresado) || 0) - totalFinal).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     
                     <input type="text" placeholder="Notas de venta (Ej: Entregar a Juan)..." value={notasFactura} onChange={e => setNotasFactura(e.target.value)} className="crud-input-style" style={{ marginBottom: '20px' }} />
 
+                    {/* BOTONES FINALES */}
                     <div className="form-grid-2">
                         <button onClick={() => setMostrarModalPago(false)} className="crud-input-style" style={{cursor: 'pointer'}}>Cancelar</button>
-                        <button id="btn-procesar" onClick={ejecutarFacturacion} disabled={!pagoValido} style={{ padding: '15px', borderRadius: '8px', fontWeight: 'bold', backgroundColor: pagoValido ? 'var(--success-green)' : 'gray', border: 'none', color: '#000', cursor: pagoValido ? 'pointer' : 'not-allowed' }}>ASENTAR</button>
+                        <button 
+                            id="btn-procesar" 
+                            onClick={ejecutarFacturacion} 
+                            // validamos que se pueda cobrar directamente aquí
+                            disabled={metodoPago === 'Mixto' ? totalMixtoIngresado < totalFinal : (parseFloat(montoIngresado) || 0) < totalFinal} 
+                            style={{ 
+                                padding: '15px', borderRadius: '8px', fontWeight: 'bold', border: 'none', color: '#000', 
+                                backgroundColor: (metodoPago === 'Mixto' ? totalMixtoIngresado >= totalFinal : (parseFloat(montoIngresado) || 0) >= totalFinal) ? 'var(--success-green)' : 'gray', 
+                                cursor: (metodoPago === 'Mixto' ? totalMixtoIngresado >= totalFinal : (parseFloat(montoIngresado) || 0) >= totalFinal) ? 'pointer' : 'not-allowed' 
+                            }}>
+                            ASENTAR
+                        </button>
                     </div>
                 </div>
             </div>
@@ -285,7 +417,7 @@ export default function FacturacionPage() {
                     <button onClick={() => setTipoDocumento('Tiquete')} style={{ padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', border: '1px solid var(--x-border)', backgroundColor: tipoDocumento === 'Tiquete' ? 'var(--x-primary)' : 'transparent', color: '#fff' }}>TIQUETE</button>
                     <button onClick={() => setTipoDocumento('Factura')} style={{ padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', border: '1px solid var(--x-border)', backgroundColor: tipoDocumento === 'Factura' ? 'var(--x-primary)' : 'transparent', color: '#fff' }}>FACTURA</button>
                 </div>
-                <input list="lista-clientes-pos" placeholder="Cliente..." value={busquedaCliente} onChange={e => manejarBusquedaCliente(e.target.value)} className="crud-input-style" style={{ borderColor: esClienteNuevo ? '#ffad1f' : 'var(--x-border)' }} />
+                <input list="lista-clientes-pos" placeholder="Cliente..." value={busquedaCliente} onChange={e => manejarBusquedaCliente(e.target.value)} className="crud-input-style" style={{ borderColor: 'var(--x-border)' }} />
                 <datalist id="lista-clientes-pos">{clientes.map(c => <option key={c.id} value={c.nombre}>{c.cedula}</option>)}</datalist>
             </div>
 
@@ -309,10 +441,10 @@ export default function FacturacionPage() {
               <li key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                 <div>
                     <div><strong>{c.cantidad}x</strong> {c.nombre}</div>
-                    {c.descPorcentaje > 0 && <div style={{ fontSize: '11px', color: 'var(--danger-red)' }}>-{c.descPorcentaje}% (₡{c.montoDescuento.toLocaleString()})</div>}
+                    {c.descPorcentaje > 0 && <div style={{ fontSize: '11px', color: 'var(--danger-red)' }}>-{c.descPorcentaje}% (₡{c.montoDescuento?.toLocaleString()})</div>}
                 </div>
                 <div style={{ display: 'flex', gap: '15px' }}>
-                    <span>₡{c.subtotalFinal.toLocaleString()}</span>
+                    <span>₡{c.subtotalFinal?.toLocaleString()}</span>
                     <button onClick={() => removerDelCarrito(i)} style={{ color: 'var(--danger-red)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>×</button>
                 </div>
               </li>
@@ -320,7 +452,7 @@ export default function FacturacionPage() {
           </ul>
           <div style={{ borderTop: '2px dashed var(--x-border)', paddingTop: '15px', marginTop: '15px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '20px', fontWeight: 'bold', color: 'var(--success-green)' }}>
-              <span>TOTAL CRC:</span> <span>₡{totalFinal.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
+              <span>TOTAL CRC:</span> <span>₡{totalFinal?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
@@ -336,7 +468,7 @@ export default function FacturacionPage() {
             <div style={{ textAlign: 'center', marginBottom: '10px' }}>
                 <h3 style={{ margin: '0 0 5px 0' }}>TIENDA CONTROL PRO</h3>
                 <p style={{ margin: 0 }}>Golfito, Puntarenas, Costa Rica</p>
-                <p style={{ margin: '5px 0', fontWeight: 'bold' }}>{facturaImpresion.tipoDocumento.toUpperCase()} ELECTRÓNICO</p>
+                <p style={{ margin: '5px 0', fontWeight: 'bold' }}>{facturaImpresion.tipoDocumento?.toUpperCase()} ELECTRÓNICO</p>
                 <p style={{ margin: 0 }}>N° FAC-{facturaImpresion.consecutivo}</p>
             </div>
             <div style={{ borderBottom: '1px dashed #000', paddingBottom: '5px', marginBottom: '5px' }}>
@@ -345,18 +477,20 @@ export default function FacturacionPage() {
                 {facturaImpresion.notas && <p style={{ margin: '3px 0', fontWeight: 'bold' }}>Notas: {facturaImpresion.notas}</p>}
             </div>
             <table style={{ width: '100%', fontSize: '11px' }}>
-                {facturaImpresion.items.map((item, idx) => (
-                    <tr key={idx}>
-                        <td>{item.nombre} (x{item.cantidad}) {item.descPorcentaje > 0 ? `[-${item.descPorcentaje}%]` : ''}</td>
-                        <td style={{ textAlign: 'right' }}>₡{item.subtotalFinal.toLocaleString()}</td>
-                    </tr>
-                ))}
+                <tbody> 
+                    {facturaImpresion.items?.map((item, idx) => (
+                        <tr key={idx}>
+                            <td>{item.nombre} (x{item.cantidad}) {item.descPorcentaje > 0 ? `[-${item.descPorcentaje}%]` : ''}</td>
+                            <td style={{ textAlign: 'right' }}>₡{item.subtotalFinal?.toLocaleString()}</td>
+                        </tr>
+                    ))}
+                </tbody> 
             </table>
             <div style={{ borderTop: '1px dashed #000', marginTop: '5px', paddingTop: '5px', textAlign: 'right' }}>
-                <p style={{ margin: '0 0 2px 0' }}>Subtotal: ₡{facturaImpresion.subtotalBruto.toLocaleString()}</p>
-                {facturaImpresion.totalDescuentos > 0 && <p style={{ margin: '0 0 2px 0' }}>Descuentos: -₡{facturaImpresion.totalDescuentos.toLocaleString()}</p>}
-                <p style={{ margin: '0 0 2px 0' }}>IVA (13%): ₡{facturaImpresion.totalImpuestos.toLocaleString()}</p>
-                <p style={{ margin: '4px 0 0 0', fontWeight: 'bold' }}>TOTAL CRC: ₡{facturaImpresion.totalFinal.toLocaleString()}</p>
+                <p style={{ margin: '0 0 2px 0' }}>Subtotal: ₡{facturaImpresion.subtotalBruto?.toLocaleString()}</p>
+                {facturaImpresion.totalDescuentos > 0 && <p style={{ margin: '0 0 2px 0' }}>Descuentos: -₡{facturaImpresion.totalDescuentos?.toLocaleString()}</p>}
+                <p style={{ margin: '0 0 2px 0' }}>IVA (13%): ₡{facturaImpresion.totalImpuestos?.toLocaleString()}</p>
+                <p style={{ margin: '4px 0 0 0', fontWeight: 'bold' }}>TOTAL CRC: ₡{facturaImpresion.totalFinal?.toLocaleString()}</p>
             </div>
         </div>
       )}

@@ -31,7 +31,7 @@ export default function BotonExportar({ datos, columnas, titulo, nombreArchivo }
                     gap: '6px'
                 }}
             >
-                <span style={{ fontSize: '14px' }}>📊</span> Descargar Excel
+                <span style={{ fontSize: '14px' }}></span> Descargar Excel
             </button>
 
             <button 
@@ -50,7 +50,7 @@ export default function BotonExportar({ datos, columnas, titulo, nombreArchivo }
                     gap: '6px'
                 }}
             >
-                <span style={{ fontSize: '14px' }}>📄</span> Generar PDF
+                <span style={{ fontSize: '14px' }}></span> Generar PDF
             </button>
         </div>
     );

@@ -1,7 +1,7 @@
 'use server'
 import { poolPromise, sql } from '@/lib/db';
 
-export async function procesarVentaTransaccional(clienteId, tipoDocumento, metodoPago, subtotal, totalDescuentos, totalImpuestos, totalFinal, montoIngresado, vuelto, notas, carrito) {
+export async function procesarVentaTransaccional(clienteId, tipoDocumento, metodoPago, subtotal, totalDescuentos, totalImpuestos, totalFinal, montoEfectivo, montoSinpe, montoTarjeta, notas, carrito) {
     try {
         const pool = await poolPromise;
         const carritoJson = JSON.stringify(carrito);
@@ -14,6 +14,9 @@ export async function procesarVentaTransaccional(clienteId, tipoDocumento, metod
             .input('total_descuentos', sql.Decimal(10, 2), parseFloat(totalDescuentos))
             .input('total_impuestos', sql.Decimal(10, 2), parseFloat(totalImpuestos))
             .input('total_final', sql.Decimal(10, 2), parseFloat(totalFinal))
+            .input('monto_efectivo', sql.Decimal(10, 2), parseFloat(montoEfectivo))
+            .input('monto_sinpe', sql.Decimal(10, 2), parseFloat(montoSinpe))
+            .input('monto_tarjeta', sql.Decimal(10, 2), parseFloat(montoTarjeta))
             .input('notas', sql.VarChar(255), notas || '')
             .input('carrito_json', sql.NVarChar(sql.MAX), carritoJson)
             .execute('sp_ProcesarVentaTransaccional');

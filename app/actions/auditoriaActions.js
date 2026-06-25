@@ -7,7 +7,7 @@ export async function registrarLogAuditoria(modulo, accion, detalles) {
         // 1. Extraer la identidad del usuario desde el JWT en las cookies
         const sesion = await verificarSesionActiva();
         
-        // Si no hay sesión (ej: venta en POS por operario sin login administrativo), se registra como Operación Local
+        
         const responsable = sesion.autenticado ? sesion.usuario.nombre : 'Operación Local / POS';
 
         const pool = await poolPromise;
@@ -19,7 +19,7 @@ export async function registrarLogAuditoria(modulo, accion, detalles) {
             .execute('sp_RegistrarAuditoria');
 
     } catch (error) {
-        // Los errores de auditoría no deben romper la aplicación principal, solo se registran en consola
+         
         console.error('[FALLO DE AUDITORÍA]:', error.message);
     }
 }

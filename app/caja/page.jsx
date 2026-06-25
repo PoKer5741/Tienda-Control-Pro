@@ -77,10 +77,8 @@ export default function CajaPage() {
     const res = await abrirCajaTransaccional(correo, contrasena, montoApertura);
     if (res.success) {
       alert('Autenticación correcta. Turno de caja inicializado.');
-      setCorreo('');
-      setContrasena('');
-      setMontoApertura('');
-      cargarTodaLaData();
+       
+      window.location.reload(); 
     } else {
       alert('Fallo de seguridad: ' + res.error);
     }
@@ -94,15 +92,15 @@ export default function CajaPage() {
         const res = await cerrarCajaTransaccional(cajaActiva.id, efectivoContado);
         if (res.success) {
           alert('Arqueo asentado con éxito. Caja cerrada.');
-          setEfectivoContado('');
-          cargarTodaLaData();
+           
+          window.location.reload(); 
         } else {
           alert('Fallo al cerrar caja: ' + res.error);
         }
     }
   };
 
-  // REPARADO: Ahora lee "total_monto" tal cual lo envía SQL Server
+  
   const totalEfectivoVendido = ventasMetodos.find(m => m.metodo_pago === 'Efectivo')?.total_monto || 0;
   const totalSinpe = ventasMetodos.find(m => m.metodo_pago === 'SINPE')?.total_monto || 0;
   const totalTarjeta = ventasMetodos.find(m => m.metodo_pago === 'Tarjeta')?.total_monto || 0;
