@@ -1,9 +1,10 @@
 import './globals.css';
-import Navbar from '@/components/Navbar';
+import Navbar from '@/components/Navbar'; 
+import CentinelaPersonal from '@/components/CentinelaPersonal'; 
 
 export const metadata = {
   title: 'Tienda Control Pro',
-  description: 'Sistema de gestion comercial y base de datos relacional',
+  description: 'Sistema POS y Gestión',
 };
 
 export default function RootLayout({ children }) {
@@ -11,6 +12,7 @@ export default function RootLayout({ children }) {
     <html lang="es">
       <body>
         <Navbar />
+        <CentinelaPersonal />
         {children}
       </body>
     </html>

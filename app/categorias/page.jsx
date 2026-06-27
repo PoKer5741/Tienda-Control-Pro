@@ -94,7 +94,7 @@ export default function CategoriasPage() {
           
           {idEditando ? (
             <div style={{ backgroundColor: 'rgba(29, 161, 242, 0.12)', border: '1px solid var(--x-primary)', padding: '12px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>📝 MODO EDICIÓN</span>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#fff' }}>MODO EDICIÓN</span>
               <button type="button" onClick={limpiarFormulario} style={{ backgroundColor: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>
                 Cancelar
               </button>

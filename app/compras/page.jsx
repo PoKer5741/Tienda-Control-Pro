@@ -217,10 +217,10 @@ export default function HistorialVentasPage() {
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={exportarAExcel} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#107c41', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                📄 Exportar Excel
+                Exportar Excel
             </button>
             <button onClick={exportarAPDF} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#e11d48', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                📑 Exportar PDF
+                Exportar PDF
             </button>
         </div>
       </div>
@@ -310,7 +310,7 @@ export default function HistorialVentasPage() {
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                                   <h4 style={{ margin: 0, color: 'var(--x-text-main)', fontSize: '13px', textTransform: 'uppercase' }}>Desglose de Artículos</h4>
                                   <button onClick={() => imprimirCopiaFactura(f)} style={{ backgroundColor: 'var(--x-bg-base)', border: '1px solid var(--x-border)', color: 'var(--x-primary)', padding: '6px 15px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>
-                                      🖨️ Imprimir Copia
+                                      Imprimir Copia
                                   </button>
                               </div>
                               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>

@@ -22,7 +22,7 @@ export default function SelectPremium({
         return () => document.removeEventListener("mousedown", manejarClicAfuera);
     }, []);
 
-    // Buscar la etiqueta del valor actualmente seleccionado
+     
     const opcionActual = opciones.find(opt => opt.valor === valorSeleccionado);
 
     return (

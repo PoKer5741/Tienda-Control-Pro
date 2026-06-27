@@ -154,3 +154,12 @@ export async function verificarSesionActiva() {
         return { autenticado: false };
     }
 }
+
+export async function bloquearAccesoAdministrador() {
+    try {
+        cookies().delete('admin_session');
+        return { success: true };
+    } catch (error) {
+        return { success: false };
+    }
+}

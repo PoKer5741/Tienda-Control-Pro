@@ -2,498 +2,1092 @@
 import { useState, useEffect } from 'react';
 import { obtenerProductos } from '@/app/actions/inventarioActions';
 import { procesarVentaTransaccional } from '@/app/actions/ventasActions';
-import { obtenerClientes, registrarCliente } from '@/app/actions/clientesActions';
+import { obtenerClientes, registrarCliente, guardarExoneracion } from '@/app/actions/clientesActions';
 import { enviarFacturaCorreo } from '@/app/actions/emailActions';
+import Modal from '@/components/Modal';
 
 export default function FacturacionPage() {
-  // --- ESTADOS ORIGINALES DEL COMPONENTE ---
-  const [inventario, setInventario] = useState([]);
-  const [clientes, setClientes] = useState([]);
-  const [cajaAbierta, setCajaAbierta] = useState(false);
-  const [cargando, setCargando] = useState(true);
-  
-  const [codigoBusqueda, setCodigoBusqueda] = useState('');
-  const [carrito, setCarrito] = useState([]);
-  const [cantidadVenta, setCantidadVenta] = useState(1);
-  const [descuentoVenta, setDescuentoVenta] = useState(0); 
-  
-  const [tipoDocumento, setTipoDocumento] = useState('Tiquete');
-  const [busquedaCliente, setBusquedaCliente] = useState('CLIENTE CONTADO');
-  const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+    // ==========================================
+    // 1. ESTADOS GLOBALES DE LA TERMINAL
+    // ==========================================
+    const [inventario, setInventario] = useState([]);
+    const [clientes, setClientes] = useState([]);
+    const [cajaAbierta, setCajaAbierta] = useState(false);
+    const [cargando, setCargando] = useState(true);
 
-  const [mostrarModalPago, setMostrarModalPago] = useState(false);
-  const [montoIngresado, setMontoIngresado] = useState('');
-  const [notasFactura, setNotasFactura] = useState('');
-  
-  const [mostrarModalCliente, setMostrarModalCliente] = useState(false);
-  const [nuevoCliCedula, setNuevoCliCedula] = useState('');
-  const [nuevoCliCorreo, setNuevoCliCorreo] = useState('');
+    // ==========================================
+    // 2. ESTADOS: BÚSQUEDA Y CARRITO DE PRODUCTOS
+    // ==========================================
+    const [codigoBusqueda, setCodigoBusqueda] = useState('');
+    const [productosSugeridos, setProductosSugeridos] = useState([]);
+    const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+    
+    const [carrito, setCarrito] = useState([]);
+    const [cantidadVenta, setCantidadVenta] = useState(1);
+    const [descuentoVenta, setDescuentoVenta] = useState(0);
 
-  const [carritosEnEspera, setCarritosEnEspera] = useState([]);
-  const [mostrarModalEspera, setMostrarModalEspera] = useState(false);
-  const [nombreEspera, setNombreEspera] = useState('');
+    // ==========================================
+    // 3. ESTADOS: DATOS DEL CLIENTE Y DOCUMENTO
+    // ==========================================
+    const [tipoDocumento, setTipoDocumento] = useState('Tiquete');
+    const [busquedaCliente, setBusquedaCliente] = useState('CLIENTE CONTADO');
+    const [clienteSeleccionado, setClienteSeleccionado] = useState(null);
+    const [clientesSugeridos, setClientesSugeridos] = useState([]);
+    const [mostrarSugerenciasCliente, setMostrarSugerenciasCliente] = useState(false);
 
-  const [facturaImpresion, setFacturaImpresion] = useState(null);
+    // ==========================================
+    // 4. ESTADOS: COBRO Y PAGOS
+    // ==========================================
+    const [mostrarModalPago, setMostrarModalPago] = useState(false);
+    const [metodoPago, setMetodoPago] = useState('Efectivo');
+    const [montoIngresado, setMontoIngresado] = useState('');
+    const [montosMixtos, setMontosMixtos] = useState({ efectivo: '', sinpe: '', tarjeta: '' });
+    const [notasFactura, setNotasFactura] = useState('');
+    const [facturaImpresion, setFacturaImpresion] = useState(null);
 
-  const [metodoPago, setMetodoPago] = useState('Efectivo'); 
-  const [montosMixtos, setMontosMixtos] = useState({ efectivo: '', sinpe: '', tarjeta: '' });
-  const totalFactura = carrito.reduce((acc, item) => acc + (item.subtotalFinal || 0), 0);
-  const totalMixtoIngresado = (parseFloat(montosMixtos.efectivo) || 0) + 
-                              (parseFloat(montosMixtos.sinpe) || 0) + 
-                              (parseFloat(montosMixtos.tarjeta) || 0);
-  const saldoPendiente = totalFactura - totalMixtoIngresado;
-  const vueltoMixto = totalMixtoIngresado > totalFactura ? totalMixtoIngresado - totalFactura : 0;
-  const puedeCobrar = metodoPago === 'Mixto' ? totalMixtoIngresado >= totalFactura : true;
+    // ==========================================
+    // 5. ESTADOS: TICKETS EN ESPERA (PAUSADOS)
+    // ==========================================
+    const [carritosEnEspera, setCarritosEnEspera] = useState([]);
+    const [mostrarModalEspera, setMostrarModalEspera] = useState(false);
+    const [nombreEspera, setNombreEspera] = useState('');
 
- 
-  
+    // ==========================================
+    // 6. ESTADOS: ALTA EXPRÉS DE CLIENTES
+    // ==========================================
+    const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
+    const [cargandoClienteRapido, setCargandoClienteRapido] = useState(false);
 
-  useEffect(() => { cargarSistemas(); }, []);
+    const [quickNombre, setQuickNombre] = useState('');
+    const [quickCedula, setQuickCedula] = useState('');
+    const [quickCorreo, setQuickCorreo] = useState('');
+    const [quickTelefono, setQuickTelefono] = useState('');
+    
+    const [quickAplicaExo, setQuickAplicaExo] = useState(false);
+    const [quickTipoExo, setQuickTipoExo] = useState('05'); 
+    const [quickNumExo, setQuickNumExo] = useState('');
+    const [quickPorcentajeExo, setQuickPorcentajeExo] = useState('13');
 
-  // FOCO UNIVERSAL: Escáner y Atajos (Intacto)
-  useEffect(() => {
-    let buffer = '';
-    let ultimaPulsacion = Date.now();
+    // ==========================================
+    // EFECTOS: INICIALIZACIÓN Y TECLADO/ESCÁNER
+    // ==========================================
+    useEffect(() => { cargarSistemas(); }, []);
 
-    const manejarTecladoGlobal = (e) => {
-        if (e.key === 'F2') { e.preventDefault(); if (carrito.length > 0) validarYAbrirPago(); return; }
-        if (e.key === 'F8') { e.preventDefault(); if (carrito.length > 0) pausarVentaActual(); return; }
+    useEffect(() => {
+        let buffer = '';
+        let ultimaPulsacion = Date.now();
 
-        const ahora = Date.now();
-        const diff = ahora - ultimaPulsacion;
-        ultimaPulsacion = ahora;
+        const manejarTecladoGlobal = (e) => {
+            if (e.key === 'F2') { e.preventDefault(); if (carrito.length > 0) validarYAbrirPago(); return; }
+            if (e.key === 'F8') { e.preventDefault(); if (carrito.length > 0) pausarVentaActual(); return; }
 
-        if (e.key === 'Enter' && buffer.length > 2) {
-            e.preventDefault(); e.stopPropagation();
-            const codigoEscaneado = buffer;
-            buffer = '';
+            const ahora = Date.now();
+            const diff = ahora - ultimaPulsacion;
+            ultimaPulsacion = ahora;
 
-            if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
-                const inputActivo = document.activeElement;
-                if (inputActivo.value.endsWith(codigoEscaneado)) {
-                    inputActivo.value = inputActivo.value.slice(0, -codigoEscaneado.length);
-                    inputActivo.dispatchEvent(new Event('input', { bubbles: true }));
+            // Detección de pistola lectora de código de barras
+            if (e.key === 'Enter' && buffer.length > 2) {
+                e.preventDefault(); e.stopPropagation();
+                const codigoEscaneado = buffer;
+                buffer = '';
+
+                if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                    const inputActivo = document.activeElement;
+                    if (inputActivo.value.endsWith(codigoEscaneado)) {
+                        inputActivo.value = inputActivo.value.slice(0, -codigoEscaneado.length);
+                        inputActivo.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
                 }
+
+                const producto = inventario.find(p => p.codigo === codigoEscaneado);
+                if (producto) procesarIngresoCarrito(producto, 1, 0);
+                else alert('Código de barras no registrado: ' + codigoEscaneado);
+                return;
             }
 
-            const producto = inventario.find(p => p.codigo === codigoEscaneado);
-            if (producto) procesarIngresoCarrito(producto, 1, 0);
-            else alert('Código no registrado: ' + codigoEscaneado);
-            return;
-        }
+            if (!e.key) return;
+            if (e.key.length === 1) buffer = (diff < 25 || buffer.length === 0) ? buffer + e.key : e.key;
+        };
 
-         
-         if (!e.key) return;
-         if (e.key.length === 1) buffer = (diff < 25 || buffer.length === 0) ? buffer + e.key : e.key;
+        window.addEventListener('keydown', manejarTecladoGlobal, true);
+        return () => window.removeEventListener('keydown', manejarTecladoGlobal, true);
+    }, [inventario, carrito, tipoDocumento, clienteSeleccionado]);
+
+    const cargarSistemas = async () => {
+        setCargando(true);
+        try {
+            const [resInv, resCli] = await Promise.all([obtenerProductos(), obtenerClientes()]);
+            setCajaAbierta(true);
+            
+            if (resInv?.success) setInventario(resInv.datos.filter(p => p.estado_comercial !== 'Descontinuado') || []);
+            if (resCli?.success) {
+                const listaClientes = resCli.datos || [];
+                setClientes(listaClientes);
+                const clienteBase = listaClientes.find(c => c.nombre === 'CLIENTE CONTADO') || { id: 1, nombre: 'CLIENTE CONTADO', cedula: '000000000', correo: 'sin@correo.com' };
+                setClienteSeleccionado(clienteBase);
+            }
+        } catch (error) {
+            console.error("Error cargando sistemas:", error);
+        }
+        setCargando(false);
     };
 
-    window.addEventListener('keydown', manejarTecladoGlobal, true);
-    return () => window.removeEventListener('keydown', manejarTecladoGlobal, true);
-  }, [inventario, carrito, tipoDocumento, clienteSeleccionado]); 
-
-  const cargarSistemas = async () => {
-    setCargando(true);
-    const [resInv, resCli] = await Promise.all([obtenerProductos(), obtenerClientes()]);
-    // En un sistema real, aquí validas la caja (Paso 18 integrado visualmente)
-    setCajaAbierta(true); 
-    
-    if (resInv.success) setInventario(resInv.datos.filter(p => p.estado_comercial !== 'Descontinuado'));
-    if (resCli.success) {
-        const listaClientes = resCli.datos || [];
-        setClientes(listaClientes);
-        const clienteBase = listaClientes.find(c => c.nombre === 'CLIENTE CONTADO') || { id: 1, nombre: 'CLIENTE CONTADO', cedula: '000000000', correo: 'sin@correo.com' };
-        setClienteSeleccionado(clienteBase);
-    }
-    setCargando(false);
-  };
-
-  const manejarBusquedaCliente = (valor) => {
-    setBusquedaCliente(valor);
-    setClienteSeleccionado(clientes.find(c => c.nombre.toLowerCase() === valor.toLowerCase() || c.cedula === valor) || null);
-  };
-
-  const omitirRegistro = () => {
-    const cc = clientes.find(c => c.nombre === 'CLIENTE CONTADO') || { id: 1, nombre: 'CLIENTE CONTADO' };
-    setBusquedaCliente('CLIENTE CONTADO'); setClienteSeleccionado(cc); setTipoDocumento('Tiquete'); 
-  };
-
-  const guardarClienteRapido = async (e) => {
-    e.preventDefault();
-    if(!busquedaCliente || !nuevoCliCedula || !nuevoCliCorreo) return alert('Faltan datos.');
-    const res = await registrarCliente(busquedaCliente.toUpperCase(), nuevoCliCedula, nuevoCliCorreo, '');
-    if (res.success) {
-        setMostrarModalCliente(false); setNuevoCliCedula(''); setNuevoCliCorreo('');
-        cargarSistemas();
-    } else alert('Fallo: ' + res.error);
-  };
-
-  const procesarIngresoCarrito = (producto, cant, descPorcentaje) => {
-    const montoDescuento = (producto.precio * cant) * (descPorcentaje / 100);
-    const subtotalFinal = (producto.precio * cant) - montoDescuento;
-
-    setCarrito(actual => {
-        const idx = actual.findIndex(i => i.id === producto.id && i.descPorcentaje === descPorcentaje);
-        if (idx >= 0) {
-            const nuevaCant = actual[idx].cantidad + cant;
-            if (producto.cantidad < nuevaCant) { alert('Stock insuficiente.'); return actual; }
-            const nuevo = [...actual];
-            nuevo[idx].cantidad = nuevaCant;
-            nuevo[idx].montoDescuento = (producto.precio * nuevaCant) * (descPorcentaje / 100);
-            nuevo[idx].subtotalFinal = (producto.precio * nuevaCant) - nuevo[idx].montoDescuento;
-            return nuevo;
+    // ==========================================
+    // AUTOCOMPLETADO DE PRODUCTOS
+    // ==========================================
+    const manejarCambioBusqueda = (e) => {
+        const valor = e.target.value;
+        setCodigoBusqueda(valor);
+        
+        if (valor.trim().length > 1) {
+            const filtrados = inventario.filter(p => 
+                p.nombre?.toLowerCase().includes(valor.toLowerCase()) || 
+                p.codigo?.includes(valor)
+            ).slice(0, 6);
+            
+            setProductosSugeridos(filtrados);
+            setMostrarSugerencias(true);
         } else {
-            if (producto.cantidad < cant) { alert('Stock insuficiente.'); return actual; }
-            return [...actual, {
-                id: producto.id, codigo: producto.codigo, nombre: producto.nombre,
-                precio: producto.precio, porcentaje_iva: producto.porcentaje_iva, 
-                cantidad: cant, descPorcentaje, montoDescuento, subtotalFinal
-            }];
+            setMostrarSugerencias(false);
         }
-    });
-  };
+    };
 
-  const agregarAlCarritoManual = (e) => {
-    e.preventDefault();
-    if (!codigoBusqueda || !cantidadVenta) return;
-    const producto = inventario.find(p => p.codigo === codigoBusqueda || p.nombre === codigoBusqueda);
-    if (!producto) return alert('Producto no válido.');
-    
-    procesarIngresoCarrito(producto, parseInt(cantidadVenta), parseFloat(descuentoVenta) || 0);
-    setCodigoBusqueda(''); setCantidadVenta(1); setDescuentoVenta(0);
-  };
+    const seleccionarSugerencia = (producto) => {
+        setCodigoBusqueda(producto.codigo);
+        setMostrarSugerencias(false);
+        const inputCant = document.getElementById('input-cantidad');
+        if(inputCant) inputCant.focus();
+    };
 
-  const removerDelCarrito = (index) => {
-    const nuevo = [...carrito]; nuevo.splice(index, 1); setCarrito(nuevo);
-  };
+    // ==========================================
+    // AUTOCOMPLETADO DE CLIENTES
+    // ==========================================
+    const manejarBusquedaCliente = (valor) => {
+        setBusquedaCliente(valor);
+        
+        if (valor.trim().length > 1) {
+            const filtrados = clientes.filter(c => 
+                c.nombre?.toLowerCase().includes(valor.toLowerCase()) || 
+                c.cedula?.includes(valor) ||
+                c.correo?.toLowerCase().includes(valor.toLowerCase())
+            ).slice(0, 5);
+            
+            setClientesSugeridos(filtrados);
+            setMostrarSugerenciasCliente(true);
+        } else {
+            setMostrarSugerenciasCliente(false);
+        }
+    };
 
-  const pausarVentaActual = () => {
-    if (carrito.length === 0) return alert('Carrito vacío.');
-    setNombreEspera(''); setMostrarModalEspera(true);
-  };
+    const seleccionarClienteSugerido = (cliente) => {
+        setBusquedaCliente(cliente.nombre);
+        setClienteSeleccionado(cliente);
+        setMostrarSugerenciasCliente(false);
+    };
 
-  const confirmarPausaVenta = (e) => {
-    e.preventDefault();
-    setCarritosEnEspera(p => [...p, { nombre: nombreEspera || `Ticket ${new Date().toLocaleTimeString()}`, carrito: [...carrito], clienteSeleccionado, busquedaCliente, tipoDocumento }]);
-    setCarrito([]); omitirRegistro(); setMostrarModalEspera(false);
-  };
+    const omitirRegistro = () => {
+        const cc = clientes.find(c => c.nombre === 'CLIENTE CONTADO') || { id: 1, nombre: 'CLIENTE CONTADO' };
+        setBusquedaCliente('CLIENTE CONTADO'); 
+        setClienteSeleccionado(cc); 
+        setTipoDocumento('Tiquete'); 
+        setMostrarSugerenciasCliente(false);
+    };
 
-  const recuperarCarritoEspera = (index) => {
-    const rec = carritosEnEspera[index];
-    setCarrito(rec.carrito); setClienteSeleccionado(rec.clienteSeleccionado); setBusquedaCliente(rec.busquedaCliente); setTipoDocumento(rec.tipoDocumento);
-    setCarritosEnEspera(p => p.filter((_, idx) => idx !== index));
-  };
+    // ==========================================
+    // LÓGICA DEL CARRITO DE COMPRAS
+    // ==========================================
+    const procesarIngresoCarrito = (producto, cant, descPorcentaje) => {
+        const montoDescuento = (producto.precio * cant) * (descPorcentaje / 100);
+        const subtotalFinal = (producto.precio * cant) - montoDescuento;
 
-  // MATEMÁTICAS (Incluyendo Descuentos)
-  const subtotalBruto = carrito.reduce((sum, item) => sum + (item.precio * item.cantidad), 0);
-  const totalDescuentos = carrito.reduce((sum, item) => sum + item.montoDescuento, 0);
-  const subtotalNeto = subtotalBruto - totalDescuentos;
-  const totalImpuestos = carrito.reduce((sum, item) => sum + (item.subtotalFinal * (item.porcentaje_iva / 100)), 0);
-  const totalFinal = subtotalNeto + totalImpuestos;
-  
-  const totalArticulos = carrito.reduce((sum, item) => sum + item.cantidad, 0);
-  const ingresadoNum = parseFloat(montoIngresado) || 0;
-  const vuelto = ingresadoNum - totalFinal;
-  const pagoValido = ingresadoNum >= totalFinal;
+        setCarrito(actual => {
+            const idx = actual.findIndex(i => i.id === producto.id && i.descPorcentaje === descPorcentaje);
+            if (idx >= 0) {
+                const nuevaCant = actual[idx].cantidad + cant;
+                if (producto.cantidad < nuevaCant) { alert('Stock insuficiente en almacén.'); return actual; }
+                const nuevo = [...actual];
+                nuevo[idx].cantidad = nuevaCant;
+                nuevo[idx].montoDescuento = (producto.precio * nuevaCant) * (descPorcentaje / 100);
+                nuevo[idx].subtotalFinal = (producto.precio * nuevaCant) - nuevo[idx].montoDescuento;
+                return nuevo;
+            } else {
+                if (producto.cantidad < cant) { alert('Stock insuficiente en almacén.'); return actual; }
+                return [...actual, {
+                    id: producto.id, codigo: producto.codigo, nombre: producto.nombre,
+                    precio: producto.precio, porcentaje_iva: producto.porcentaje_iva, 
+                    cantidad: cant, descPorcentaje, montoDescuento, subtotalFinal
+                }];
+            }
+        });
+    };
 
-  const validarYAbrirPago = () => {
-    if (!cajaAbierta) return alert('CAJA CERRADA: Debe abrir un turno de caja para facturar.');
-    if (carrito.length === 0) return alert('Carrito vacío.');
-    if (tipoDocumento === 'Factura' && (!clienteSeleccionado || !clienteSeleccionado.cedula)) return alert('Hacienda requiere cédula para Factura.');
-    if (!clienteSeleccionado) return alert('Seleccione o registre al cliente.');
+    const agregarAlCarritoManual = (e) => {
+        e.preventDefault();
+        if (!codigoBusqueda || !cantidadVenta) return;
+        const producto = inventario.find(p => p.codigo === codigoBusqueda || p.nombre === codigoBusqueda);
+        if (!producto) return alert('Artículo no válido o no encontrado.');
+        
+        procesarIngresoCarrito(producto, parseInt(cantidadVenta), parseFloat(descuentoVenta) || 0);
+        setCodigoBusqueda(''); setCantidadVenta(1); setDescuentoVenta(0);
+    };
 
-    setMetodoPago('Efectivo'); setMontoIngresado(''); setNotasFactura(''); setMostrarModalPago(true);
-  };
+    const removerDelCarrito = (index) => {
+        const nuevoCarrito = [...carrito];
+        nuevoCarrito.splice(index, 1);
+        setCarrito(nuevoCarrito);
+    };
 
-  const ejecutarFacturacion = async () => {
-    // 1. Validamos la seguridad del botón
-    const totalMixtoIngresado = (parseFloat(montosMixtos.efectivo) || 0) + 
-                                (parseFloat(montosMixtos.sinpe) || 0) + 
-                                (parseFloat(montosMixtos.tarjeta) || 0);
-    
-    const esPagoValido = metodoPago === 'Mixto' 
-        ? totalMixtoIngresado >= totalFinal 
-        : (parseFloat(montoIngresado) || 0) >= totalFinal;
+    const actualizarCantidad = (index, nuevaCantidad) => {
+        // CORRECCIÓN BUG 1: Permite dejar el campo vacío temporalmente para poder borrar y escribir sin que se bloquee
+        const val = nuevaCantidad === '' ? '' : parseInt(nuevaCantidad);
+        if (val !== '' && val < 1) return;
+        
+        const nuevoCarrito = [...carrito];
+        const item = nuevoCarrito[index];
+        item.cantidad = val; 
+        
+        const cantParaCalculo = val || 0; 
+        const precioBruto = item.precio * cantParaCalculo;
+        const montoDescuento = item.descPorcentaje > 0 ? (precioBruto * (item.descPorcentaje / 100)) : 0;
+        
+        item.subtotalFinal = precioBruto - montoDescuento;
+        item.montoDescuento = montoDescuento;
+        
+        setCarrito(nuevoCarrito);
+    };
 
-    if (!esPagoValido || !clienteSeleccionado) return;
+    // ==========================================
+    // PAUSA Y RECUPERACIÓN DE TICKETS
+    // ==========================================
+    const pausarVentaActual = () => {
+        if (carrito.length === 0) return alert('El carrito ya está vacío.');
+        setNombreEspera(''); setMostrarModalEspera(true);
+    };
 
-     
-    const btn = document.getElementById('btn-procesar');
-    if(btn) btn.innerText = 'PROCESANDO...';
-    
-     
-    let enviarEfectivo = 0;
-    let enviarSinpe = 0;
-    let enviarTarjeta = 0;
+    const confirmarPausaVenta = (e) => {
+        e.preventDefault();
+        setCarritosEnEspera(p => [...p, { nombre: nombreEspera || `Ticket ${new Date().toLocaleTimeString()}`, carrito: [...carrito], clienteSeleccionado, busquedaCliente, tipoDocumento }]);
+        setCarrito([]); omitirRegistro(); setMostrarModalEspera(false);
+    };
 
-    if (metodoPago === 'Mixto') {
-        enviarEfectivo = parseFloat(montosMixtos.efectivo) || 0;
-        enviarSinpe = parseFloat(montosMixtos.sinpe) || 0;
-        enviarTarjeta = parseFloat(montosMixtos.tarjeta) || 0;
-    } else if (metodoPago === 'Efectivo') {
-        enviarEfectivo = parseFloat(montoIngresado) || totalFinal;
-    } else if (metodoPago === 'SINPE') {
-        enviarSinpe = parseFloat(montoIngresado) || totalFinal;
-    } else if (metodoPago === 'Tarjeta') {
-        enviarTarjeta = parseFloat(montoIngresado) || totalFinal;
-    }
+    const recuperarCarritoEspera = (index) => {
+        if (carrito.length > 0) return alert('ATENCIÓN: Cobre o vacíe la caja actual antes de recuperar un ticket pausado.');
+        const rec = carritosEnEspera[index];
+        setCarrito(rec.carrito); 
+        setClienteSeleccionado(rec.clienteSeleccionado); 
+        setBusquedaCliente(rec.busquedaCliente); 
+        setTipoDocumento(rec.tipoDocumento);
+        setCarritosEnEspera(p => p.filter((_, idx) => idx !== index));
+    };
 
-    
-    const respuesta = await procesarVentaTransaccional(
-        clienteSeleccionado.id, 
-        tipoDocumento, 
-        metodoPago, 
-        subtotalBruto, 
-        totalDescuentos, 
-        totalImpuestos, 
-        totalFinal, 
-        enviarEfectivo,  
-        enviarSinpe,      
-        enviarTarjeta,    
-        notasFactura, 
-        carrito
-    );
+    // ==========================================
+    // MOTOR FISCAL: CÁLCULOS MATEMÁTICOS DE HACIENDA
+    // ==========================================
+    const calcularTotalesFactura = () => {
+        let subtotalGeneral = 0;
+        let totalDescuentosGen = 0;
+        let totalIvaOriginal = 0;
+        let totalExonerado = 0;
 
-    if (respuesta.success) {
-        alert(`¡Factura #${respuesta.facturaId} generada con éxito!`);
-         
-        setMostrarModalPago(false);
-        setCarrito([]);
-        setBusquedaCliente('CLIENTE CONTADO');
-        setClienteSeleccionado(clientes.find(c => c.cedula === '000000000') || null);
-        setNotasFactura('');
-        setMontosMixtos({ efectivo: '', sinpe: '', tarjeta: '' });  
-    } else {
-        alert('Fallo al asentar la factura: ' + respuesta.error);
-        if(btn) btn.innerText = 'ASENTAR';
-    }
-    
-    if (respuesta.success) {
-        const fac = respuesta.facturaId;
-        setFacturaImpresion({
-            consecutivo: fac.toString().padStart(5, '0'), tipoDocumento, fecha: new Date().toLocaleString(),
-            cliente: clienteSeleccionado, metodoPago, notas: notasFactura,
-            subtotalBruto, totalDescuentos, subtotalNeto, totalImpuestos, totalFinal, items: [...carrito]
+        carrito.forEach(item => {
+            // Usa 0 temporalmente si el cajero borró el número
+            const cantCalculo = item.cantidad || 0; 
+            const subtotalLineaBruto = item.precio * cantCalculo;
+            const montoDescLinea = item.montoDescuento || 0;
+            const subtotalLineaNeto = subtotalLineaBruto - montoDescLinea;
+
+            // CORRECCIÓN BUG 2: Usa '??' para respetar el 0% de IVA de la base de datos sin forzar el 13%
+            const porcentajeIva = item.porcentaje_iva ?? 13;
+            const ivaOriginalLinea = subtotalLineaNeto * (porcentajeIva / 100);
+
+            let exoneradoLinea = 0;
+            if (clienteSeleccionado && clienteSeleccionado.aplica_exoneracion) {
+                const porcExo = parseFloat(clienteSeleccionado.porcentaje_exoneracion || 0);
+                exoneradoLinea = subtotalLineaNeto * (porcExo / 100);
+                if (exoneradoLinea > ivaOriginalLinea) exoneradoLinea = ivaOriginalLinea; // Tope legal
+            }
+
+            subtotalGeneral += subtotalLineaBruto;
+            totalDescuentosGen += montoDescLinea;
+            totalIvaOriginal += ivaOriginalLinea;
+            totalExonerado += exoneradoLinea;
         });
 
-        if (clienteSeleccionado.correo && clienteSeleccionado.correo !== 'sin@correo.com') {
-            await enviarFacturaCorreo(clienteSeleccionado.correo, clienteSeleccionado.nombre, tipoDocumento, fac, carrito, subtotalNeto, totalImpuestos, totalFinal);
+        const subtotalNeto = subtotalGeneral - totalDescuentosGen;
+        const ivaCobradoFinal = totalIvaOriginal - totalExonerado;
+        const totalPagar = subtotalNeto + ivaCobradoFinal;
+
+        return {
+            subtotalBruto: subtotalGeneral,
+            descuentos: totalDescuentosGen,
+            subtotalNeto: subtotalNeto,
+            ivaOriginal: totalIvaOriginal,
+            montoExonerado: totalExonerado,
+            ivaNeto: ivaCobradoFinal,
+            total: totalPagar
+        };
+    };
+
+    const totales = calcularTotalesFactura();
+
+    // ==========================================
+    // LÓGICA DE APERTURA DE PAGOS Y VUELTOS
+    // ==========================================
+    const ingresadoNum = parseFloat(montoIngresado) || 0;
+    const totalMixtoIngresado = (parseFloat(montosMixtos.efectivo) || 0) + (parseFloat(montosMixtos.sinpe) || 0) + (parseFloat(montosMixtos.tarjeta) || 0);
+    const saldoPendiente = totales.total - totalMixtoIngresado;
+    const vuelto = ingresadoNum > totales.total ? ingresadoNum - totales.total : 0;
+    const vueltoMixto = totalMixtoIngresado > totales.total ? totalMixtoIngresado - totales.total : 0;
+    
+    const pagoValido = ingresadoNum >= totales.total;
+    const puedeCobrar = totalMixtoIngresado >= totales.total;
+
+    const validarYAbrirPago = () => {
+        if (!cajaAbierta) return alert('CAJA CERRADA: Debe abrir un turno de caja para facturar.');
+        if (carrito.length === 0) return alert('El carrito está vacío.');
+        // Limpiamos los items con cantidad "vacía" por el bug anterior antes de cobrar
+        if (carrito.some(i => i.cantidad === '' || i.cantidad === 0)) return alert('Por favor, asigne una cantidad válida a todos los productos antes de cobrar.');
+        
+        if (tipoDocumento === 'Factura' && (!clienteSeleccionado || !clienteSeleccionado.cedula || clienteSeleccionado.cedula === '000000000')) return alert('Hacienda requiere Cédula Real para emitir Factura Electrónica.');
+        if (!clienteSeleccionado) return alert('Seleccione o registre al comprador.');
+        
+        setMetodoPago('Efectivo'); 
+        setMontoIngresado(''); 
+        setMontosMixtos({ efectivo: '', sinpe: '', tarjeta: '' });
+        setMostrarModalPago(true);
+    };
+
+    // ==========================================
+    // EJECUCIÓN FINAL DE LA FACTURA EN SQL SERVER
+    // ==========================================
+    const ejecutarFacturacion = async () => {
+        const esPagoValido = metodoPago === 'Mixto' ? puedeCobrar : pagoValido;
+        if (!esPagoValido || !clienteSeleccionado) return;
+
+        const btn = document.getElementById('btn-procesar');
+        if(btn) btn.innerText = 'PROCESANDO TRANSACCIÓN...';
+        
+        let enviarEfectivo = 0, enviarSinpe = 0, enviarTarjeta = 0;
+        if (metodoPago === 'Mixto') {
+            enviarEfectivo = parseFloat(montosMixtos.efectivo) || 0;
+            enviarSinpe = parseFloat(montosMixtos.sinpe) || 0;
+            enviarTarjeta = parseFloat(montosMixtos.tarjeta) || 0;
+        } else if (metodoPago === 'Efectivo') { enviarEfectivo = parseFloat(montoIngresado) || totales.total;
+        } else if (metodoPago === 'SINPE') { enviarSinpe = parseFloat(montoIngresado) || totales.total;
+        } else if (metodoPago === 'Tarjeta') { enviarTarjeta = parseFloat(montoIngresado) || totales.total; }
+
+        const respuesta = await procesarVentaTransaccional(
+            clienteSeleccionado.id, tipoDocumento, metodoPago, 
+            totales.subtotalBruto, totales.descuentos, totales.ivaNeto, totales.total, 
+            enviarEfectivo, enviarSinpe, enviarTarjeta, notasFactura, carrito
+        );
+
+        if (respuesta.success) {
+            const fac = respuesta.facturaId;
+            
+            // Preparamos datos exactos para el Voucher Térmico
+            setFacturaImpresion({
+                consecutivo: fac.toString().padStart(5, '0'), tipoDocumento, fecha: new Date().toLocaleString(),
+                cliente: clienteSeleccionado, metodoPago, notas: notasFactura,
+                subtotalBruto: totales.subtotalBruto, totalDescuentos: totales.descuentos, subtotalNeto: totales.subtotalNeto, 
+                totalImpuestos: totales.ivaNeto, totalFinal: totales.total, items: [...carrito]
+            });
+
+            if (clienteSeleccionado.correo && clienteSeleccionado.correo !== 'sin@correo.com') {
+                await enviarFacturaCorreo(clienteSeleccionado.correo, clienteSeleccionado.nombre, tipoDocumento, fac, carrito, totales.subtotalNeto, totales.ivaNeto, totales.total);
+            }
+
+            setMostrarModalPago(false); 
+            setCarrito([]); 
+            omitirRegistro(); 
+            setMontosMixtos({ efectivo: '', sinpe: '', tarjeta: '' });
+            
+            if(btn) btn.innerText = 'ASENTAR Y FACTURAR';
+            setTimeout(() => { window.print(); }, 300);
+        } else {
+            alert('Fallo crítico al asentar la factura: ' + respuesta.error);
+            if(btn) btn.innerText = 'ASENTAR Y FACTURAR';
         }
+    };
 
-        setMostrarModalPago(false); setCarrito([]); omitirRegistro(); 
-        if(btn) btn.innerText = 'ASENTAR';
-        setTimeout(() => { window.print(); }, 300);
-    } else {
-      alert('Error SQL: ' + respuesta.error);
-      if(btn) btn.innerText = 'ASENTAR';
-    }
-  };
+    // ==========================================
+    // CREACIÓN RÁPIDA DE CLIENTES (FICHA EXPRÉS)
+    // ==========================================
+    const manejarGuardarClienteRapido = async (e) => {
+        e.preventDefault();
+        setCargandoClienteRapido(true);
+        try {
+            const resCliente = await registrarCliente(quickNombre.toUpperCase(), quickCedula, quickCorreo, quickTelefono);
+            if (!resCliente.success) throw new Error(resCliente.error);
 
-  const esClienteNuevo = busquedaCliente.length > 2 && !clienteSeleccionado && busquedaCliente !== 'CLIENTE CONTADO';
+            const nuevoClienteId = resCliente.datos?.id || resCliente.id;
 
-  return (
-    <main style={{ padding: '2rem', position: 'relative' }}>
-      <style>{`
-        @media print {
-            body, html, main { background: #ffffff !important; color: #000000 !important; padding: 0 !important; margin: 0 !important; }
-            nav, .responsive-grid, h2, div[style*="justify-content: space-between"], .crud-input-style, button, datalist { display: none !important; }
-            .seccion-recibo-termico { display: block !important; width: 76mm !important; margin: 0 auto !important; padding: 10px !important; font-family: 'Courier New', Courier, monospace !important; font-size: 11px !important; color: #000 !important; }
+            if (nuevoClienteId && quickAplicaExo && guardarExoneracion) {
+                const nuevaExo = {
+                    tipo_documento: quickTipoExo,
+                    numero_documento: quickNumExo,
+                    porcentaje_exonerado: quickPorcentajeExo,
+                    fecha_emision: new Date().toISOString().split('T')[0],
+                    fecha_vencimiento: null
+                };
+                await guardarExoneracion(nuevoClienteId, nuevaExo);
+            }
+
+            const clienteArmado = {
+                id: nuevoClienteId, nombre: quickNombre.toUpperCase(), cedula: quickCedula, correo: quickCorreo, telefono: quickTelefono,
+                aplica_exoneracion: quickAplicaExo, porcentaje_exoneracion: quickAplicaExo ? quickPorcentajeExo : 0
+            };
+
+            setClientes(prev => [...prev.filter(c => c.cedula !== quickCedula), clienteArmado]);
+            setBusquedaCliente(clienteArmado.nombre);
+            setClienteSeleccionado(clienteArmado);
+
+            setIsClienteModalOpen(false);
+            setQuickNombre(''); setQuickCedula(''); setQuickCorreo(''); setQuickTelefono('');
+            setQuickAplicaExo(false); setQuickNumExo('');
+        } catch (error) {
+            alert("Error de persistencia: " + error.message);
         }
-        @media screen { .seccion-recibo-termico { display: none !important; } }
-      `}</style>
+        setCargandoClienteRapido(false);
+    };
 
-      {/* MODAL COBRO (CON NOTAS INCLUIDAS) */}
-      {mostrarModalPago && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, padding: '15px' }}>
-            <div style={{ background: 'var(--x-bg-card)', border: '1px solid var(--x-border)', borderRadius: '12px', width: '100%', maxWidth: '450px', overflow: 'hidden' }}>
-                <div style={{ backgroundColor: 'var(--x-primary)', padding: '15px', textAlign: 'center' }}>
-                    <h3 style={{ margin: 0, color: '#fff' }}>Emitir {tipoDocumento}</h3>
+    return (
+        <main style={{ display: 'flex', height: '100vh', backgroundColor: 'var(--x-bg-base)', color: '#fff', overflow: 'hidden', fontFamily: 'sans-serif' }}>
+            
+            {/* PANEL IZQUIERDO: CARRITO DE COMPRAS Y BÚSQUEDA DE PRODUCTOS */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '15px', borderRight: '1px solid var(--x-border)', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                    <h1 style={{ fontSize: '20px', margin: 0, fontWeight: 'bold', letterSpacing: '0.5px' }}>Terminal de Caja</h1>
+                    {cajaAbierta && <span style={{ fontSize: '11px', backgroundColor: 'rgba(0, 186, 124, 0.1)', color: 'var(--success-green)', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold' }}>● TURNO ACTIVO</span>}
                 </div>
-                <div style={{ padding: '25px' }}>
-                    <div style={{ textAlign: 'center', marginBottom: '15px', fontSize: '14px' }}>
-                        Cliente: <span style={{ color: '#fff', fontWeight: 'bold' }}>{clienteSeleccionado?.nombre}</span>
+
+                {/* Buscador de Productos Compacto con Etiquetas Fijas */}
+                <form onSubmit={agregarAlCarritoManual} style={{ display: 'flex', gap: '12px', marginBottom: '15px', alignItems: 'flex-end', backgroundColor: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--x-border)' }}>
+                    
+                    {/* Input de Búsqueda con Autocomplete */}
+                    <div style={{ flex: 1, position: 'relative' }}>
+                        <label style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginBottom: '4px', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Buscar Artículo</label>
+                        <input 
+                            type="text" 
+                            placeholder="Escanee código o escriba el nombre del artículo..." 
+                            value={codigoBusqueda} 
+                            onChange={manejarCambioBusqueda} 
+                            onBlur={() => setTimeout(() => setMostrarSugerencias(false), 200)} 
+                            className="crud-input-style" 
+                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }} 
+                            autoFocus 
+                            autoComplete="off" 
+                        />
+
+                        {/* Desplegable de Sugerencias */}
+                        {mostrarSugerencias && productosSugeridos?.length > 0 && (
+                            <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'var(--x-bg-card)', border: '1px solid var(--x-primary)', borderRadius: '6px', marginTop: '5px', padding: '0', listStyle: 'none', zIndex: 90, maxHeight: '220px', overflowY: 'auto', boxShadow: '0 8px 20px rgba(0,0,0,0.6)' }}>
+                                {productosSugeridos.map(p => (
+                                    <li 
+                                        key={p.id} 
+                                        onClick={() => seleccionarSugerencia(p)} 
+                                        style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} 
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.12)'} 
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                        <div>
+                                            <div style={{ fontWeight: 'bold', fontSize: '12px', color: '#fff' }}>{p.nombre}</div>
+                                            <div style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>Cod: {p.codigo} • Almacén: {p.cantidad}</div>
+                                        </div>
+                                        <div style={{ color: 'var(--success-green)', fontWeight: 'bold', fontSize: '13px' }}>₡{p.precio.toLocaleString()}</div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
 
-                    {/* PANEL DE TOTALES */}
-                    <div style={{ backgroundColor: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '8px', marginBottom: '15px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: 'var(--x-text-muted)' }}><span>Bruto:</span><span>₡{subtotalBruto?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px', color: 'var(--danger-red)' }}><span>Descuentos:</span><span>- ₡{totalDescuentos?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '13px', color: 'var(--x-text-muted)' }}><span>I.V.A.:</span><span>₡{totalImpuestos?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--x-border)', fontSize: '18px', fontWeight: 'bold' }}>
-                            <span>A COBRAR</span><span style={{ color: 'var(--success-green)' }}>₡{totalFinal?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span>
-                        </div>
+                    {/* Input de Cantidad */}
+                    <div style={{ width: '70px' }}>
+                        <label style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginBottom: '4px', display: 'block', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CANT.</label>
+                        <input 
+                            id="input-cantidad" 
+                            type="number" 
+                            min="1" 
+                            value={cantidadVenta} 
+                            onChange={(e) => setCantidadVenta(e.target.value)} 
+                            className="crud-input-style" 
+                            style={{ width: '100%', padding: '8px', textAlign: 'center', fontWeight: 'bold', fontSize: '13px' }} 
+                        />
                     </div>
 
-                    {/* BOTONES DE SELECCIÓN DE MÉTODO (AHORA CON MIXTO) */}
-                    <div style={{ display: 'flex', gap: '5px', marginBottom: '15px' }}>
-                        {['Efectivo', 'SINPE', 'Tarjeta', 'Mixto'].map(met => (
-                            <button 
-                                key={met} 
-                                onClick={() => {
-                                    setMetodoPago(met); 
-                                    // Auto-completado inteligente
-                                    if (met !== 'Efectivo' && met !== 'Mixto') setMontoIngresado(totalFinal.toString());
-                                    if (met === 'Efectivo') setMontoIngresado('');
-                                }} 
-                                style={{ 
-                                    flex: 1, padding: '10px 0', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px',
-                                    border: metodoPago === met ? `2px solid var(--x-primary)` : '1px solid var(--x-border)', 
-                                    backgroundColor: metodoPago === met ? 'rgba(29, 161, 242, 0.1)' : 'transparent', 
-                                    color: metodoPago === met ? 'var(--x-primary)' : '#fff' 
-                                }}>
-                                {met.toUpperCase()}
-                            </button>
-                        ))}
+                    {/* Input de Descuento (Diferenciado en Naranja) */}
+                    <div style={{ width: '80px' }}>
+                        <label style={{ fontSize: '10px', color: '#ffad1f', marginBottom: '4px', display: 'block', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 'bold' }}>% DESC.</label>
+                        <input 
+                            type="number" 
+                            min="0" 
+                            max="100" 
+                            value={descuentoVenta} 
+                            onChange={(e) => setDescuentoVenta(e.target.value)} 
+                            className="crud-input-style" 
+                            style={{ width: '100%', padding: '8px', textAlign: 'center', fontSize: '13px', fontWeight: 'bold', borderColor: descuentoVenta > 0 ? '#ffad1f' : 'var(--x-border)', color: descuentoVenta > 0 ? '#ffad1f' : '#fff' }} 
+                        />
                     </div>
 
-                    {/* RENDERIZADO CONDICIONAL: MIXTO VS NORMAL */}
-                    {metodoPago === 'Mixto' ? (
-                        <div style={{ backgroundColor: 'rgba(255,255,255,0.03)', padding: '15px', borderRadius: '8px', border: '1px dashed var(--x-border)', marginBottom: '15px' }}>
-                            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ fontSize: '11px', color: 'var(--x-text-muted)', display: 'block', marginBottom: '5px' }}>Efectivo</label>
-                                    <input type="number" placeholder="₡0" value={montosMixtos.efectivo} onChange={e => setMontosMixtos({...montosMixtos, efectivo: e.target.value})} className="crud-input-style" style={{ padding: '8px', fontSize: '13px' }} />
+                    <button type="submit" style={{ backgroundColor: 'var(--x-primary)', color: '#fff', border: 'none', padding: '0 15px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', height: '34px', fontSize: '13px' }}>
+                        Agregar
+                    </button>
+                </form>
+
+                {/* CAJA DEL CARRITO (Se encoge automáticamente) */}
+                <div style={{ flex: 1, minHeight: 0, backgroundColor: 'var(--x-bg-card)', borderRadius: '10px', border: '1px solid var(--x-border)', overflowY: 'auto', marginBottom: '20px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', textAlign: 'left' }}>
+                        <thead style={{ backgroundColor: 'rgba(255,255,255,0.04)', position: 'sticky', top: 0, zIndex: 10 }}>
+                            <tr style={{ borderBottom: '1px solid var(--x-border)' }}>
+                                <th style={{ padding: '10px 12px' }}>Artículo</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'center', width: '70px' }}>Cant</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'right', width: '90px' }}>Precio</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'center', width: '60px' }}>Desc</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'right', width: '100px' }}>Total</th>
+                                <th style={{ padding: '10px 12px', textAlign: 'center', width: '40px' }}>X</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {carrito.length === 0 ? (
+                                <tr>
+                                    <td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: 'var(--x-text-muted)', fontStyle: 'italic' }}>
+                                        Caja lista. Ingrese productos o escanee un código de barras para comenzar.
+                                    </td>
+                                </tr>
+                            ) : (
+                                carrito.map((item, idx) => (
+                                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                        <td style={{ padding: '8px 12px', fontWeight: '500' }}>{item.nombre}</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                            <input 
+                                                type="number" 
+                                                min="1" 
+                                                value={item.cantidad} 
+                                                onChange={e => actualizarCantidad(idx, e.target.value)} 
+                                                style={{ width: '45px', backgroundColor: 'rgba(0,0,0,0.2)', color: '#fff', border: '1px solid var(--x-border)', textAlign: 'center', borderRadius: '4px', padding: '3px 0', fontSize: '12px', fontWeight: 'bold' }} 
+                                            />
+                                        </td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--x-text-muted)' }}>₡{item.precio.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'center', color: item.descPorcentaje > 0 ? '#ffad1f' : 'var(--x-text-muted)', fontWeight: item.descPorcentaje > 0 ? 'bold' : 'normal' }}>{item.descPorcentaje}%</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 'bold', color: 'var(--success-green)' }}>₡{item.subtotalFinal.toLocaleString()}</td>
+                                        <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                            <button onClick={() => removerDelCarrito(idx)} style={{ background: 'none', border: 'none', color: 'var(--danger-red)', cursor: 'pointer', fontWeight: 'bold', fontSize: '12px' }}>⊗</button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* BOTONES DE RETENCIÓN Y LIQUIDACIÓN (Con más separación del borde inferior) */}
+                <div style={{ display: 'flex', gap: '12px', paddingBottom: '70px' }}>
+                    <button onClick={pausarVentaActual} style={{ flex: 1, backgroundColor: 'rgba(255, 173, 31, 0.08)', color: '#ffad1f', border: '1px solid rgba(255, 173, 31, 0.3)', padding: '14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'all 0.2s' }}>
+                        [F8] Pausar Ticket
+                    </button>
+                    <button onClick={validarYAbrirPago} style={{ flex: 2, backgroundColor: 'var(--success-green)', color: '#fff', border: 'none', padding: '14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px', letterSpacing: '0.5px', boxShadow: '0 4px 12px rgba(0, 186, 124, 0.2)' }}>
+                        [F2] PROCESAR COBRO (₡{totales.total.toLocaleString()})
+                    </button>
+                </div>
+
+            </div>
+
+            {/* PANEL DERECHO: DATOS FISCALES DEL CLIENTE Y DESGLOSE MONETARIO */}
+            <div style={{ width: '360px', padding: '15px', display: 'flex', flexDirection: 'column', gap: '15px', backgroundColor: 'rgba(0,0,0,0.15)', overflowY: 'auto' }}>
+                
+                {/* SECCIÓN CLIENTE CON DOBLE CLIC PARA EDICIÓN RÁPIDA */}
+                <div style={{ background: 'var(--x-bg-card)', padding: '15px', borderRadius: '12px', border: '1px solid var(--x-border)' }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: 'var(--x-primary)', fontSize: '13px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Datos del Comprador</h4>
+                    
+                    <select value={tipoDocumento} onChange={e => setTipoDocumento(e.target.value)} className="crud-input-style" style={{ width: '100%', marginBottom: '12px', fontSize: '13px', padding: '8px' }}>
+                        <option value="Tiquete">Tiquete Electrónico</option>
+                        <option value="Factura">Factura Electrónica</option>
+                    </select>
+
+                    {/* Input de búsqueda inteligente con autocompletado */}
+                    <div style={{ position: 'relative', marginBottom: '10px' }}>
+                        <input 
+                            type="text" 
+                            placeholder="Buscar cliente (Nombre o Cédula)..." 
+                            value={busquedaCliente} 
+                            onChange={(e) => manejarBusquedaCliente(e.target.value)} 
+                            onFocus={() => { if (clientesSugeridos?.length > 0) setMostrarSugerenciasCliente(true); }}
+                            onBlur={() => setTimeout(() => setMostrarSugerenciasCliente(false), 200)}
+                            className="crud-input-style" 
+                            style={{ width: '100%', padding: '8px 10px', fontSize: '13px' }} 
+                            autoComplete="off"
+                        />
+                        
+                        {/* Listado Desplegable de Clientes */}
+                        {mostrarSugerenciasCliente && clientesSugeridos?.length > 0 && (
+                            <ul style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'var(--x-bg-card)', border: '1px solid var(--x-primary)', borderRadius: '6px', marginTop: '4px', padding: '0', listStyle: 'none', zIndex: 95, maxHeight: '180px', overflowY: 'auto', boxShadow: '0 6px 15px rgba(0,0,0,0.5)' }}>
+                                {busquedaCliente !== 'CLIENTE CONTADO' && (
+                                    <li 
+                                        onClick={omitirRegistro}
+                                        style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', color: 'var(--x-text-muted)', fontSize: '11px', fontStyle: 'italic' }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.04)'} 
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                        ↶ Volver a Cliente Contado
+                                    </li>
+                                )}
+                                {clientesSugeridos.map(c => (
+                                    <li 
+                                        key={c.id} 
+                                        onClick={() => seleccionarClienteSugerido(c)} 
+                                        style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer', display: 'flex', flexDirection: 'column' }} 
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.12)'} 
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                    >
+                                        <div style={{ fontWeight: 'bold', fontSize: '12px', color: '#fff', display: 'flex', justifyContent: 'space-between' }}>
+                                            {c.nombre}
+                                            {c.aplica_exoneracion && <span style={{ color: '#ffad1f', fontSize: '10px', backgroundColor: 'rgba(255,173,31,0.1)', padding: '1px 4px', borderRadius: '3px' }}>Exonerado</span>}
+                                        </div>
+                                        <div style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginTop: '2px' }}>ID: {c.cedula || 'N/A'} • {c.correo || 'Sin correo'}</div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+                    
+                    <button type="button" onClick={() => { setQuickNombre(busquedaCliente !== 'CLIENTE CONTADO' ? busquedaCliente : ''); setIsClienteModalOpen(true); }} style={{ width: '100%', backgroundColor: 'rgba(59, 130, 246, 0.08)', color: 'var(--x-primary)', border: '1px dashed rgba(59, 130, 246, 0.4)', padding: '8px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', marginBottom: '12px', fontSize: '12px', transition: 'all 0.2s' }}>
+                        + Nuevo Usuario
+                    </button>
+
+                    {/* TARJETA INFORMATIVA: SOPORTA DOBLE CLIC PARA ACTUALIZAR EXONERACIÓN RÁPIDAMENTE */}
+                    {clienteSeleccionado && (
+                        <div 
+                            title="¡Doble clic para abrir el editor fiscal rápido de este cliente!"
+                            onDoubleClick={() => {
+                                if (clienteSeleccionado.nombre === 'CLIENTE CONTADO') return;
+                                setQuickNombre(clienteSeleccionado.nombre);
+                                setQuickCedula(clienteSeleccionado.cedula);
+                                setQuickCorreo(clienteSeleccionado.correo || '');
+                                setQuickTelefono(clienteSeleccionado.telefono || '');
+                                setQuickAplicaExo(!!clienteSeleccionado.aplica_exoneracion);
+                                setQuickPorcentajeExo(clienteSeleccionado.porcentaje_exoneracion?.toString() || '13');
+                                setIsClienteModalOpen(true);
+                            }}
+                            style={{ 
+                                backgroundColor: 'rgba(255,255,255,0.04)', padding: '12px', borderRadius: '8px', fontSize: '12px', borderLeft: clienteSeleccionado.nombre !== 'CLIENTE CONTADO' ? '3px solid var(--x-primary)' : '3px solid var(--x-border)', cursor: clienteSeleccionado.nombre !== 'CLIENTE CONTADO' ? 'pointer' : 'default', transition: 'background 0.2s', userSelect: 'none' 
+                            }}
+                            onMouseEnter={(e) => { if(clienteSeleccionado.nombre !== 'CLIENTE CONTADO') e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.08)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
+                        >
+                            <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '13px' }}>{clienteSeleccionado.nombre}</div>
+                            <div style={{ color: 'var(--x-text-muted)', marginTop: '2px' }}>Cédula / Tipo: {clienteSeleccionado.cedula}</div>
+                            
+                            {clienteSeleccionado.aplica_exoneracion ? (
+                                <div style={{ color: '#ffad1f', fontWeight: 'bold', marginTop: '8px', padding: '6px', backgroundColor: 'rgba(255, 173, 31, 0.08)', borderRadius: '4px', border: '1px solid rgba(255, 173, 31, 0.2)', fontSize: '11px', textAlign: 'center' }}>
+                                    ✓ EXONERADO HACIENDA ({clienteSeleccionado.porcentaje_exoneracion}%)
                                 </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ fontSize: '11px', color: '#a855f7', display: 'block', marginBottom: '5px' }}>SINPE</label>
-                                    <input type="number" placeholder="₡0" value={montosMixtos.sinpe} onChange={e => setMontosMixtos({...montosMixtos, sinpe: e.target.value})} className="crud-input-style" style={{ padding: '8px', fontSize: '13px' }} />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ fontSize: '11px', color: 'var(--x-primary)', display: 'block', marginBottom: '5px' }}>Tarjeta</label>
-                                    <input type="number" placeholder="₡0" value={montosMixtos.tarjeta} onChange={e => setMontosMixtos({...montosMixtos, tarjeta: e.target.value})} className="crud-input-style" style={{ padding: '8px', fontSize: '13px' }} />
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', fontWeight: 'bold', color: totalMixtoIngresado >= totalFinal ? 'var(--success-green)' : 'var(--danger-red)' }}>
-                                <span>{totalMixtoIngresado >= totalFinal ? 'Vuelto a entregar:' : 'Saldo Pendiente:'}</span>
-                                <span>₡{totalMixtoIngresado >= totalFinal ? (totalMixtoIngresado - totalFinal).toLocaleString(undefined, {minimumFractionDigits: 2}) : (totalFinal - totalMixtoIngresado).toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
-                            </div>
-                        </div>
-                    ) : (
-                        <div style={{ marginBottom: '15px' }}>
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                                <input type="number" value={montoIngresado} onChange={(e) => setMontoIngresado(e.target.value)} disabled={metodoPago !== 'Efectivo'} className="crud-input-style" placeholder="Monto recibido CRC" style={{ flex: 1, textAlign: 'right', fontWeight: 'bold', fontSize: '16px' }} />
-                                {metodoPago === 'Efectivo' && <button onClick={() => setMontoIngresado(totalFinal.toString())} className="crud-input-style" style={{cursor: 'pointer', width:'auto'}}>Exacto</button>}
-                            </div>
-                            {metodoPago === 'Efectivo' && (parseFloat(montoIngresado) || 0) > totalFinal && (
-                                <div style={{ textAlign: 'right', marginTop: '8px', color: 'var(--success-green)', fontWeight: 'bold', fontSize: '14px' }}>
-                                    Vuelto: ₡{((parseFloat(montoIngresado) || 0) - totalFinal).toLocaleString(undefined, {minimumFractionDigits: 2})}
-                                </div>
+                            ) : (
+                                clienteSeleccionado.nombre !== 'CLIENTE CONTADO' && (
+                                    <div style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginTop: '6px', textAlign: 'center', fontStyle: 'italic' }}>
+                                        💡 Doble clic aquí para agregar exoneración
+                                    </div>
+                                )
                             )}
                         </div>
                     )}
+                </div>
+
+                {/* DESGLOSE LIQUIDACIÓN DE FACTURA (HACIENDA COSTA RICA) */}
+                <div style={{ background: 'var(--x-bg-card)', padding: '15px', borderRadius: '12px', border: '1px solid var(--x-border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <h4 style={{ margin: '0 0 5px 0', textTransform: 'uppercase', fontSize: '11px', color: 'var(--x-text-muted)', letterSpacing: '0.5px', fontWeight: 'bold' }}>Liquidación de Caja</h4>
                     
-                    <input type="text" placeholder="Notas de venta (Ej: Entregar a Juan)..." value={notasFactura} onChange={e => setNotasFactura(e.target.value)} className="crud-input-style" style={{ marginBottom: '20px' }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                        <span style={{ color: 'var(--x-text-muted)' }}>Subtotal Bruto:</span>
+                        <span>₡{totales.subtotalBruto.toLocaleString()}</span>
+                    </div>
 
-                    {/* BOTONES FINALES */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#ffad1f' }}>
+                        <span>Descuentos Otorgados:</span>
+                        <span style={{ fontWeight: 'bold' }}>- ₡{totales.descuentos.toLocaleString()}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--x-text-muted)' }}>
+                        <span>Impuesto IVA Teórico:</span>
+                        <span>₡{totales.ivaOriginal.toLocaleString()}</span>
+                    </div>
+
+                    {/* Desglose dinámico de la rebaja restada por ley de exoneraciones */}
+                    {totales.montoExonerado > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--danger-red)', backgroundColor: 'rgba(239, 68, 68, 0.05)', padding: '6px 8px', borderRadius: '5px', border: '1px dashed var(--danger-red)' }}>
+                            <span style={{ fontWeight: 'bold' }}>Rebaja Exoneración (Hacienda):</span>
+                            <span style={{ fontWeight: 'bold' }}>- ₡{totales.montoExonerado.toLocaleString()}</span>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                        <span style={{ color: 'var(--x-text-muted)' }}>Impuesto IVA Neto Cobrado:</span>
+                        <span style={{ fontWeight: 'bold' }}>₡{totales.ivaNeto.toLocaleString()}</span>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid var(--x-border)', paddingTop: '10px', marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 'bold' }}>Total a Pagar:</span>
+                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: 'var(--success-green)' }}>₡{totales.total.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                {/* HISTORIAL COLA DE TICKETS EN ESPERA */}
+                {carritosEnEspera.length > 0 && (
+                    <div style={{ background: 'var(--x-bg-card)', padding: '12px', borderRadius: '12px', border: '1px solid rgba(255, 173, 31, 0.3)', backgroundColor: 'rgba(255, 173, 31, 0.02)' }}>
+                        <h4 style={{ margin: '0 0 8px 0', color: '#ffad1f', fontSize: '11px', textTransform: 'uppercase', fontWeight: 'bold' }}>Tickets Retenidos ({carritosEnEspera.length})</h4>
+                        {carritosEnEspera.map((c, idx) => (
+                            <button key={idx} onClick={() => recuperarCarritoEspera(idx)} style={{ width: '100%', textAlign: 'left', backgroundColor: 'rgba(255, 173, 31, 0.08)', color: '#fff', border: '1px solid rgba(255, 173, 31, 0.15)', padding: '6px 10px', borderRadius: '6px', marginBottom: '4px', cursor: 'pointer', fontSize: '12px', transition: 'all 0.2s' }} onMouseEnter={(e)=>e.currentTarget.style.backgroundColor='rgba(255,173,31,0.15)'} onMouseLeave={(e)=>e.currentTarget.style.backgroundColor='rgba(255, 173, 31, 0.08)'}>
+                                {c.nombre}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+          {/* MODAL: PROCESAMIENTO COBRO MAESTRO CON DISEÑO EXACTO AL MOCKUP */}
+         {/* MODAL: PROCESAMIENTO COBRO MAESTRO CON DISEÑO EXACTO AL MOCKUP */}
+         <Modal isOpen={mostrarModalPago} onClose={() => setMostrarModalPago(false)}>
+                {/* 🛠️ FIX: Se aplica margin negativo (-24px) para absorber el padding del componente Modal padre y borrar el "trozo de sobra" */}
+                <div style={{ minWidth: '420px', backgroundColor: '#161b22', borderRadius: '8px', overflow: 'hidden', color: '#fff', fontFamily: 'sans-serif', margin: '-24px' }}>
+                    
+                    {/* Encabezado Azul Prominente (Pegado a los bordes) */}
+                    <div style={{ backgroundColor: '#3b82f6', padding: '20px 16px 16px 16px', textAlign: 'center' }}>
+                        <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>Emitir {tipoDocumento}</h3>
+                    </div>
+
+                    {/* Contenedor interno con padding restaurado para el resto de los elementos */}
+                    <div style={{ padding: '24px' }}>
+                        
+                        {/* Cliente Seleccionado */}
+                        <div style={{ textAlign: 'center', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            CLIENTE: <span style={{ color: '#fff', fontWeight: 'bold', marginLeft: '5px' }}>{clienteSeleccionado?.nombre || 'CLIENTE CONTADO'}</span>
+                        </div>
+
+                        {/* Caja de Totales (Oscura) */}
+                        <div style={{ backgroundColor: '#0d1117', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--x-text-muted)', marginBottom: '10px' }}>
+                                <span>{carrito.reduce((acc, item) => acc + (parseInt(item.cantidad) || 0), 0)} artículos en carrito</span>
+                                <span>Subtotal: ₡{totales.subtotalNeto.toLocaleString()}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--x-text-muted)', marginBottom: '15px' }}>
+                                <span>I.V.A.</span>
+                                <span>₡{totales.ivaNeto.toLocaleString()}</span>
+                            </div>
+                            {totales.montoExonerado > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: 'var(--danger-red)', marginBottom: '15px' }}>
+                                    <span>Exoneración</span>
+                                    <span>-₡{totales.montoExonerado.toLocaleString()}</span>
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '15px', marginTop: '5px' }}>
+                                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#fff' }}>TOTAL A COBRAR</span>
+                                <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#10b981' }}>₡{totales.total.toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        {/* Método de Pago */}
+                        <label style={{ fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '10px', display: 'block', fontWeight: 'bold' }}>MÉTODO DE PAGO</label>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginBottom: '25px' }}>
+                            {['Efectivo', 'SINPE', 'Tarjeta', 'Mixto'].map(metodo => (
+                                <button 
+                                    key={metodo}
+                                    type="button"
+                                    onClick={() => {
+                                        setMetodoPago(metodo);
+                                        // Autocompletar el total si el pago es digital puro
+                                        if (metodo === 'SINPE' || metodo === 'Tarjeta') {
+                                            setMontoIngresado(totales.total.toString());
+                                        } else {
+                                            setMontoIngresado('');
+                                        }
+                                    }}
+                                    style={{
+                                        padding: '10px 5px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.15s', fontSize: '11px', textTransform: 'uppercase',
+                                        backgroundColor: metodoPago === metodo ? 'rgba(16, 185, 129, 0.1)' : 'transparent',
+                                        color: metodoPago === metodo ? '#10b981' : '#fff',
+                                        border: metodoPago === metodo ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)'
+                                    }}
+                                >
+                                    {metodo}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* BLOQUE: EFECTIVO */}
+                        {metodoPago === 'Efectivo' && (
+                            <>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px' }}>
+                                    <label style={{ fontSize: '14px', color: '#fff', fontWeight: 'bold', width: '70px' }}>Efectivo</label>
+                                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', backgroundColor: '#0d1117', borderRadius: '6px', padding: '2px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <span style={{ color: 'var(--x-text-muted)', fontSize: '14px' }}>₡</span>
+                                        <input 
+                                            type="number" 
+                                            value={montoIngresado} 
+                                            onChange={e => setMontoIngresado(e.target.value)} 
+                                            style={{ width: '100%', backgroundColor: 'transparent', border: 'none', color: '#fff', padding: '10px', fontSize: '14px', outline: 'none' }} 
+                                            autoFocus
+                                        />
+                                    </div>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setMontoIngresado(totales.total.toString())} 
+                                        style={{ backgroundColor: 'transparent', color: 'var(--x-text-muted)', border: '1px solid rgba(255,255,255,0.1)', padding: '10px 15px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', transition: 'all 0.2s' }}
+                                        onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.color = 'var(--x-text-muted)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                                    >
+                                        Exacto
+                                    </button>
+                                </div>
+                                
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0d1117', padding: '15px 20px', borderRadius: '6px', marginBottom: '25px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '13px' }}>Cambio / Vuelto</span>
+                                    <span style={{ color: vuelto > 0 ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '16px' }}>
+                                        ₡{vuelto > 0 ? vuelto.toLocaleString() : '0.00'}
+                                    </span>
+                                </div>
+                            </>
+                        )}
+
+                        {/* BLOQUE: MIXTO */}
+                        {metodoPago === 'Mixto' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '25px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#0d1117', borderRadius: '6px', padding: '5px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '13px', width: '70px' }}>Efectivo</span>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '14px' }}>₡</span>
+                                    <input type="number" value={montosMixtos.efectivo} onChange={e => setMontosMixtos({...montosMixtos, efectivo: e.target.value})} style={{ flex: 1, backgroundColor: 'transparent', border: 'none', color: '#fff', padding: '8px', outline: 'none' }} />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#0d1117', borderRadius: '6px', padding: '5px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '13px', width: '70px' }}>SINPE</span>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '14px' }}>₡</span>
+                                    <input type="number" value={montosMixtos.sinpe} onChange={e => setMontosMixtos({...montosMixtos, sinpe: e.target.value})} style={{ flex: 1, backgroundColor: 'transparent', border: 'none', color: '#fff', padding: '8px', outline: 'none' }} />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#0d1117', borderRadius: '6px', padding: '5px 10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '13px', width: '70px' }}>Tarjeta</span>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '14px' }}>₡</span>
+                                    <input type="number" value={montosMixtos.tarjeta} onChange={e => setMontosMixtos({...montosMixtos, tarjeta: e.target.value})} style={{ flex: 1, backgroundColor: 'transparent', border: 'none', color: '#fff', padding: '8px', outline: 'none' }} />
+                                </div>
+                                
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0d1117', padding: '15px 20px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <span style={{ color: 'var(--x-text-muted)', fontSize: '13px' }}>Faltante / Vuelto</span>
+                                    <span style={{ color: saldoPendiente > 0 ? '#ef4444' : (vueltoMixto > 0 ? '#10b981' : '#ef4444'), fontWeight: 'bold', fontSize: '16px' }}>
+                                        ₡{saldoPendiente > 0 ? saldoPendiente.toLocaleString() : (vueltoMixto > 0 ? vueltoMixto.toLocaleString() : '0.00')}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* BLOQUE: SINPE / TARJETA (Limpio y minimalista) */}
+                        {(metodoPago === 'SINPE' || metodoPago === 'Tarjeta') && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0d1117', padding: '15px 20px', borderRadius: '6px', marginBottom: '25px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                                <span style={{ color: 'var(--x-text-muted)', fontSize: '13px' }}>Total {metodoPago}</span>
+                                <span style={{ color: '#10b981', fontWeight: 'bold', fontSize: '16px' }}>
+                                    ₡{totales.total.toLocaleString()}
+                                </span>
+                            </div>
+                        )}
+
+                        {/* Footer Botones Identicos a la Imagen */}
+                        <div style={{ display: 'flex', gap: '15px' }}>
+                            <button 
+                                type="button" 
+                                onClick={() => setMostrarModalPago(false)} 
+                                style={{ flex: 1, backgroundColor: '#111827', color: '#fff', border: '1px solid rgba(255,255,255,0.05)', padding: '14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'background 0.2s' }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#1f2937'}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#111827'}
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                id="btn-procesar"
+                                type="button" 
+                                onClick={ejecutarFacturacion} 
+                                disabled={metodoPago === 'Mixto' ? !puedeCobrar : (metodoPago === 'Efectivo' ? !pagoValido : false)}
+                                style={{ 
+                                    flex: 1, backgroundColor: '#1e3a5f', color: '#93c5fd', border: 'none', padding: '14px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', textTransform: 'uppercase', transition: 'all 0.2s', 
+                                    opacity: (metodoPago === 'Mixto' ? puedeCobrar : (metodoPago === 'Efectivo' ? pagoValido : true)) ? 1 : 0.5 
+                                }}
+                            >
+                                Asentar Transacción
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* MODAL: ALTA EXPRESIVA / RE-CONFIGURADOR FISCAL DE CLIENTES */}
+            <Modal isOpen={isClienteModalOpen} onClose={() => setIsClienteModalOpen(false)}>
+                <form onSubmit={manejarGuardarClienteRapido} style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '100%', maxWidth: '440px', color: '#fff' }}>
+                    <div style={{ borderBottom: '1px solid var(--x-border)', paddingBottom: '8px' }}>
+                        <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>Ficha Operativa de Cliente Exprés</h3>
+                    </div>
+
+                    <div>
+                        <label style={{ fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '4px', display: 'block' }}>Nombre Completo / Razón Social</label>
+                        <input type="text" value={quickNombre} onChange={e => setQuickNombre(e.target.value)} className="crud-input-style" required style={{ textTransform: 'uppercase' }} />
+                    </div>
+                    
                     <div className="form-grid-2">
-                        <button onClick={() => setMostrarModalPago(false)} className="crud-input-style" style={{cursor: 'pointer'}}>Cancelar</button>
-                        <button 
-                            id="btn-procesar" 
-                            onClick={ejecutarFacturacion} 
-                            // validamos que se pueda cobrar directamente aquí
-                            disabled={metodoPago === 'Mixto' ? totalMixtoIngresado < totalFinal : (parseFloat(montoIngresado) || 0) < totalFinal} 
-                            style={{ 
-                                padding: '15px', borderRadius: '8px', fontWeight: 'bold', border: 'none', color: '#000', 
-                                backgroundColor: (metodoPago === 'Mixto' ? totalMixtoIngresado >= totalFinal : (parseFloat(montoIngresado) || 0) >= totalFinal) ? 'var(--success-green)' : 'gray', 
-                                cursor: (metodoPago === 'Mixto' ? totalMixtoIngresado >= totalFinal : (parseFloat(montoIngresado) || 0) >= totalFinal) ? 'pointer' : 'not-allowed' 
-                            }}>
-                            ASENTAR
-                        </button>
+                        <div>
+                            <label style={{ fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '4px', display: 'block' }}>Cédula / ID</label>
+                            <input type="text" value={quickCedula} onChange={e => setQuickCedula(e.target.value)} className="crud-input-style" required />
+                        </div>
+                        <div>
+                            <label style={{ fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '4px', display: 'block' }}>Teléfono</label>
+                            <input type="text" value={quickTelefono} onChange={e => setQuickTelefono(e.target.value)} className="crud-input-style" />
+                        </div>
                     </div>
-                </div>
-            </div>
-        </div>
-      )}
-
-      {/* POS UI MAIN */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ margin: 0, color: 'var(--x-text-main)' }}>POS Táctil & Láser</h2>
-        {!cajaAbierta && <span style={{ background: 'var(--danger-red)', color: '#fff', padding: '6px 12px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px' }}>CAJA CERRADA</span>}
-      </div>
-
-      <div className="responsive-grid">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ background: 'var(--x-bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--x-border)' }}>
-                <div className="form-grid-2" style={{ marginBottom: '15px' }}>
-                    <button onClick={() => setTipoDocumento('Tiquete')} style={{ padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', border: '1px solid var(--x-border)', backgroundColor: tipoDocumento === 'Tiquete' ? 'var(--x-primary)' : 'transparent', color: '#fff' }}>TIQUETE</button>
-                    <button onClick={() => setTipoDocumento('Factura')} style={{ padding: '10px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', border: '1px solid var(--x-border)', backgroundColor: tipoDocumento === 'Factura' ? 'var(--x-primary)' : 'transparent', color: '#fff' }}>FACTURA</button>
-                </div>
-                <input list="lista-clientes-pos" placeholder="Cliente..." value={busquedaCliente} onChange={e => manejarBusquedaCliente(e.target.value)} className="crud-input-style" style={{ borderColor: 'var(--x-border)' }} />
-                <datalist id="lista-clientes-pos">{clientes.map(c => <option key={c.id} value={c.nombre}>{c.cedula}</option>)}</datalist>
-            </div>
-
-            <div style={{ background: 'var(--x-bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--x-border)' }}>
-                <h3 style={{ marginTop: 0 }}>Entrada Manual</h3>
-                <form onSubmit={agregarAlCarritoManual} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <input list="lista-inventario" placeholder="Producto/Código..." value={codigoBusqueda} onChange={e => setCodigoBusqueda(e.target.value)} className="crud-input-style"/>
-                    <datalist id="lista-inventario">{inventario.map(p => <option key={p.id} value={p.codigo}>{p.nombre} (₡{p.precio})</option>)}</datalist>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <input type="number" min="1" placeholder="Cant" value={cantidadVenta} onChange={e => setCantidadVenta(e.target.value)} className="crud-input-style" style={{flex:1}}/>
-                        <input type="number" min="0" max="100" placeholder="% Desc" value={descuentoVenta} onChange={e => setDescuentoVenta(e.target.value)} className="crud-input-style" style={{flex:1}}/>
+                    
+                    <div>
+                        <label style={{ fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '4px', display: 'block' }}>Correo Electrónico (Hacienda)</label>
+                        <input type="email" value={quickCorreo} onChange={e => setQuickCorreo(e.target.value)} className="crud-input-style" required />
                     </div>
-                    <button type="submit" className="crud-input-style" style={{cursor: 'pointer'}}>Insertar</button>
+
+                    {/* SECCIÓN FISCAL DE EXONERACIÓN */}
+                    <div style={{ backgroundColor: 'rgba(255, 173, 31, 0.04)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 173, 31, 0.2)' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: '#ffad1f' }}>
+                            <input type="checkbox" checked={quickAplicaExo} onChange={e => setQuickAplicaExo(e.target.checked)} style={{ width: '16px', height: '16px', accentColor: '#ffad1f' }} />
+                            Gozar de Exoneración Tributaria
+                        </label>
+
+                        {quickAplicaExo && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '12px', borderTop: '1px dashed rgba(255, 173, 31, 0.2)', paddingTop: '10px' }}>
+                                <div className="form-grid-2">
+                                    <div>
+                                        <label style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginBottom: '3px', display: 'block' }}>Tipo Doc.</label>
+                                        <select value={quickTipoExo} onChange={e => setQuickTipoExo(e.target.value)} className="crud-input-style" style={{ backgroundColor: 'var(--x-bg-base)', fontSize: '12px', padding: '6px' }}><option value="05">05 - Zonas Francas</option><option value="01">01 - Compras Autorizadas</option><option value="03">03 - Ley Especial</option></select>
+                                    </div>
+                                    <div>
+                                        <label style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginBottom: '3px', display: 'block' }}>Porcentaje %</label>
+                                        <input type="number" min="1" max="13" value={quickPorcentajeExo} onChange={e => setQuickPorcentajeExo(e.target.value)} className="crud-input-style" style={{ padding: '6px', textAlign: 'center', fontWeight: 'bold' }} />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: '10px', color: 'var(--x-text-muted)', marginBottom: '3px', display: 'block' }}>Número de Resolución / Autorización</label>
+                                    <input type="text" placeholder="Ej: AL-0012423" value={quickNumExo} onChange={e => setQuickNumExo(e.target.value)} className="crud-input-style" style={{ padding: '6px' }} required={quickAplicaExo} />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <button type="submit" disabled={cargandoClienteRapido} style={{ backgroundColor: 'var(--x-primary)', color: '#fff', border: 'none', padding: '12px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', textTransform: 'uppercase', opacity: cargandoClienteRapido ? 0.7 : 1 }}>
+                        {cargandoClienteRapido ? 'Sincronizando Base de Datos...' : 'Vincular y Guardar Cliente'}
+                    </button>
                 </form>
-            </div>
-        </div>
+            </Modal>
 
-        <div style={{ background: 'var(--x-bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--x-border)', display: 'flex', flexDirection: 'column' }}>
-          <ul style={{ listStyle: 'none', padding: 0, flex: 1, maxHeight: '350px', overflowY: 'auto' }}>
-            {carrito.map((c, i) => (
-              <li key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <div>
-                    <div><strong>{c.cantidad}x</strong> {c.nombre}</div>
-                    {c.descPorcentaje > 0 && <div style={{ fontSize: '11px', color: 'var(--danger-red)' }}>-{c.descPorcentaje}% (₡{c.montoDescuento?.toLocaleString()})</div>}
-                </div>
-                <div style={{ display: 'flex', gap: '15px' }}>
-                    <span>₡{c.subtotalFinal?.toLocaleString()}</span>
-                    <button onClick={() => removerDelCarrito(i)} style={{ color: 'var(--danger-red)', background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>×</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          <div style={{ borderTop: '2px dashed var(--x-border)', paddingTop: '15px', marginTop: '15px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '20px', fontWeight: 'bold', color: 'var(--success-green)' }}>
-              <span>TOTAL CRC:</span> <span>₡{totalFinal?.toLocaleString(undefined, {minimumFractionDigits: 2}) || 0}</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-            <button onClick={pausarVentaActual} style={{ padding: '12px', background: 'transparent', border: '1px solid var(--x-border)', color: '#fff', borderRadius: '6px', cursor: 'pointer' }}>Pausar [F8]</button>
-            <button onClick={validarYAbrirPago} style={{ flex: 1, backgroundColor: 'var(--success-green)', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Cobrar [F2]</button>
-          </div>
-        </div>
-      </div>
+            {/* MODAL DE RETENCIÓN DE VENTAS (TICKETS EN ESPERA) */}
+            <Modal isOpen={mostrarModalEspera} onClose={() => setMostrarModalEspera(false)}>
+                <form onSubmit={confirmarPausaVenta} style={{ display: 'flex', flexDirection: 'column', gap: '12px', color: '#fff', width: '320px' }}>
+                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold' }}>Pausar Ticket de Venta</h3>
+                    <p style={{ fontSize: '12px', color: 'var(--x-text-muted)', margin: 0 }}>Identifique este carrito para poder restaurarlo más tarde en caja.</p>
+                    <input type="text" value={nombreEspera} onChange={e => setNombreEspera(e.target.value)} placeholder="Ej: Manuel (Fue por efectivo)" className="crud-input-style" autoFocus required />
+                    <button type="submit" style={{ backgroundColor: '#ffad1f', color: '#000', border: 'none', padding: '10px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', textTransform: 'uppercase' }}>Retener Carrito</button>
+                </form>
+            </Modal>
 
-      {/* COMPROBANTE TÉRMICO (INCLUYE NOTAS Y DESCUENTOS) */}
-      {facturaImpresion && (
-        <div className="seccion-recibo-termico">
-            <div style={{ textAlign: 'center', marginBottom: '10px' }}>
-                <h3 style={{ margin: '0 0 5px 0' }}>TIENDA CONTROL PRO</h3>
-                <p style={{ margin: 0 }}>Golfito, Puntarenas, Costa Rica</p>
-                <p style={{ margin: '5px 0', fontWeight: 'bold' }}>{facturaImpresion.tipoDocumento?.toUpperCase()} ELECTRÓNICO</p>
-                <p style={{ margin: 0 }}>N° FAC-{facturaImpresion.consecutivo}</p>
-            </div>
-            <div style={{ borderBottom: '1px dashed #000', paddingBottom: '5px', marginBottom: '5px' }}>
-                <p style={{ margin: '3px 0' }}>Fecha: {facturaImpresion.fecha}</p>
-                <p style={{ margin: '3px 0' }}>Cliente: {facturaImpresion.cliente?.nombre}</p>
-                {facturaImpresion.notas && <p style={{ margin: '3px 0', fontWeight: 'bold' }}>Notas: {facturaImpresion.notas}</p>}
-            </div>
-            <table style={{ width: '100%', fontSize: '11px' }}>
-                <tbody> 
-                    {facturaImpresion.items?.map((item, idx) => (
-                        <tr key={idx}>
-                            <td>{item.nombre} (x{item.cantidad}) {item.descPorcentaje > 0 ? `[-${item.descPorcentaje}%]` : ''}</td>
-                            <td style={{ textAlign: 'right' }}>₡{item.subtotalFinal?.toLocaleString()}</td>
-                        </tr>
-                    ))}
-                </tbody> 
-            </table>
-            <div style={{ borderTop: '1px dashed #000', marginTop: '5px', paddingTop: '5px', textAlign: 'right' }}>
-                <p style={{ margin: '0 0 2px 0' }}>Subtotal: ₡{facturaImpresion.subtotalBruto?.toLocaleString()}</p>
-                {facturaImpresion.totalDescuentos > 0 && <p style={{ margin: '0 0 2px 0' }}>Descuentos: -₡{facturaImpresion.totalDescuentos?.toLocaleString()}</p>}
-                <p style={{ margin: '0 0 2px 0' }}>IVA (13%): ₡{facturaImpresion.totalImpuestos?.toLocaleString()}</p>
-                <p style={{ margin: '4px 0 0 0', fontWeight: 'bold' }}>TOTAL CRC: ₡{facturaImpresion.totalFinal?.toLocaleString()}</p>
-            </div>
-        </div>
-      )}
-    </main>
-  );
+            {/* VOUCHER DE IMPRESIÓN TÉRMICA DE HACIENDA (80MM TICKET) */}
+            {/* VOUCHER DE IMPRESIÓN TÉRMICA DE HACIENDA (Invisible en pantalla) */}
+            {facturaImpresion && (
+                <div id="seccion-impresion">
+                    <style type="text/css">
+                        {`
+                            /* 1. OCULTAR COMPLETAMENTE EN EL MONITOR */
+                            @media screen {
+                                #seccion-impresion { display: none !important; }
+                            }
+
+                            /* 2. MOSTRAR ÚNICAMENTE EN LA IMPRESORA TÉRMICA */
+                            @media print {
+                                @page { margin: 0; size: auto; }
+                                body * { visibility: hidden; }
+                                #seccion-impresion, #seccion-impresion * { visibility: visible !important; }
+                                #seccion-impresion {
+                                    display: block !important;
+                                    position: absolute; left: 0; top: 0; width: 80mm; padding: 12px;
+                                    font-family: 'Courier New', Courier, monospace; font-size: 11px; color: #000; background-color: #fff;
+                                }
+                                .t-header { text-align: center; margin-bottom: 8px; }
+                                .t-divider { border-bottom: 1px dashed #000; margin: 6px 0; }
+                                .t-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+                                .t-table th { border-bottom: 1px solid #000; padding-bottom: 3px; text-align: left; }
+                                .t-table td { padding: 3px 0; }
+                                .t-right { text-align: right; }
+                                .t-center { text-align: center; }
+                                .t-bold { font-weight: bold; }
+                            }
+                        `}
+                    </style>
+
+                    <div className="t-header">
+                        <h2 style={{ margin: '0 0 3px 0', fontSize: '16px', fontWeight: 'bold' }}>SISTEMA CONTROL</h2>
+                        <div style={{ fontSize: '10px' }}>{facturaImpresion.tipoDocumento} Electrónico</div>
+                        <div style={{ fontSize: '10px' }}>Consecutivo: #{facturaImpresion.consecutivo}</div>
+                        <div style={{ fontSize: '10px' }}>{facturaImpresion.fecha}</div>
+                    </div>
+
+                    <div className="t-divider"></div>
+                    <div><span className="t-bold">Cliente:</span> {facturaImpresion.cliente?.nombre || 'CLIENTE CONTADO'}</div>
+                    {facturaImpresion.cliente?.cedula && facturaImpresion.cliente.cedula !== '000000000' && (
+                        <div><span className="t-bold">Cédula:</span> {facturaImpresion.cliente.cedula}</div>
+                    )}
+                    <div className="t-divider"></div>
+
+                    <table className="t-table">
+                        <thead>
+                            <tr>
+                                <th style={{ width: '15%' }} className="t-center">Cant</th>
+                                <th style={{ width: '55%' }}>Artículo</th>
+                                <th style={{ width: '30%' }} className="t-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {facturaImpresion.items.map((item, idx) => (
+                                <tr key={idx}>
+                                    <td valign="top" className="t-center">{item.cantidad}</td>
+                                    <td>
+                                        {item.nombre}<br/>
+                                        <small>₡{item.precio.toLocaleString()} {item.descPorcentaje > 0 ? `(-${item.descPorcentaje}%)` : ''}</small>
+                                    </td>
+                                    <td valign="top" className="t-right">₡{item.subtotalFinal.toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    <div className="t-divider"></div>
+                    
+                    <table className="t-table">
+                        <tbody>
+                            <tr>
+                                <td>Subtotal Bruto:</td>
+                                <td className="t-right">₡{facturaImpresion.subtotalBruto.toLocaleString()}</td>
+                            </tr>
+                            {facturaImpresion.totalDescuentos > 0 && (
+                                <tr>
+                                    <td>Descuentos:</td>
+                                    <td className="t-right">-₡{facturaImpresion.totalDescuentos.toLocaleString()}</td>
+                                </tr>
+                            )}
+                            <tr>
+                                <td>Impuesto IVA Neto:</td>
+                                <td className="t-right">₡{facturaImpresion.totalImpuestos.toLocaleString()}</td>
+                            </tr>
+                            <tr>
+                                <td className="t-bold" style={{ fontSize: '13px', paddingTop: '4px' }}>TOTAL COMPRA:</td>
+                                <td className="t-right t-bold" style={{ fontSize: '13px', paddingTop: '4px' }}>₡{facturaImpresion.totalFinal.toLocaleString()}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div className="t-divider"></div>
+                    <div><span className="t-bold">Forma de Pago:</span> {facturaImpresion.metodoPago}</div>
+                    <div className="t-divider"></div>
+                    
+                    <div className="t-center" style={{ marginTop: '10px', fontSize: '10px' }}>
+                        ¡Muchas gracias por su compra!<br/>
+                        Documento Autorizado por Hacienda CR
+                    </div>
+                </div>
+            )}
+        </main>
+    );
 }

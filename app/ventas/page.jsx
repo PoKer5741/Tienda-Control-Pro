@@ -1,8 +1,10 @@
 'use client';
 import { useState, useEffect, Fragment } from 'react';
+import * as XLSX from 'xlsx';  
 import { obtenerHistorialVentas } from '@/app/actions/ventasActions';
 import { anularFacturaTransaccional } from '@/app/actions/anulacionesActions';
 import SelectPremium from '@/components/SelectPremium';
+
 
 export default function HistorialVentasPage() {
   const [facturas, setFacturas] = useState([]);
@@ -31,7 +33,6 @@ export default function HistorialVentasPage() {
     if (respuesta.success) {
       const datosNuevos = respuesta.datos || [];
       setFacturas(datosNuevos);
-      // Si trajo menos registros que el límite, significa que es la última página
       setHayMasDatos(datosNuevos.length === TAMANO_PAGINA);
     } else {
       alert('Error al cargar historial: ' + respuesta.error);
@@ -58,7 +59,7 @@ export default function HistorialVentasPage() {
     }
   };
 
-  // Filtrado en el cliente para el bloque actual de 50 registros
+  // Filtrado en el cliente para el bloque actual
   const facturasVisibles = facturas.filter(f => {
     const cumpleTexto = f.id.toString().includes(busqueda) || f.cliente_nombre.toLowerCase().includes(busqueda.toLowerCase());
     const cumpleEstado = filtroEstado === 'Todos' || f.estado === filtroEstado;
@@ -71,6 +72,132 @@ export default function HistorialVentasPage() {
     return cumpleTexto && cumpleEstado && cumplePago && cumpleDesde && cumpleHasta;
   });
 
+  // ==========================================
+  // NUEVAS FUNCIONES DE EXPORTACIÓN E IMPRESIÓN
+  // ==========================================
+
+  const imprimirCopiaFactura = (factura) => {
+    const fecha = factura.fecha && factura.fecha !== 'N/A' ? new Date(factura.fecha).toLocaleString() : new Date().toLocaleString();
+    const tipo = factura.tipo_documento || 'Tiquete';
+    
+    const contenido = `
+        <html>
+        <head>
+            <title>Copia Factura #${factura.id}</title>
+            <style>
+                body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; color: #000; }
+                table { width: 100%; font-size: 12px; border-collapse: collapse; }
+                .center { text-align: center; }
+                .right { text-align: right; }
+                .bold { font-weight: bold; }
+                .divider { border-top: 1px dashed #000; margin: 5px 0; }
+                @media print { body { width: 80mm; margin: 0; padding: 0; } }
+            </style>
+        </head>
+        <body>
+            <div class="center">
+                <h3 style="margin:0 0 5px 0;">TIENDA CONTROL PRO</h3>
+                <p style="margin:0;">Golfito, Puntarenas, Costa Rica</p>
+                <p class="bold" style="margin:5px 0;">*** COPIA REIMPRESIÓN ***</p>
+                <p style="margin:0;">${tipo.toUpperCase()} ELECTRÓNICO</p>
+                <p style="margin:0;">N° FAC-${factura.id}</p>
+            </div>
+            <div class="divider"></div>
+            <p style="margin:2px 0;">Fecha: ${fecha}</p>
+            <p style="margin:2px 0;">Cliente: ${factura.cliente_nombre}</p>
+            <p style="margin:2px 0;">Método: ${factura.metodo_pago}</p>
+            <div class="divider"></div>
+            <table>
+                <tbody>
+                    ${(factura.detalles || []).map(d => `
+                        <tr>
+                            <td style="padding:2px 0;">${d.producto} (x${d.cantidad})</td>
+                            <td class="right" style="padding:2px 0;">₡${parseFloat(d.subtotal || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <div class="divider"></div>
+            <div class="right">
+                <p class="bold" style="margin:4px 0 0 0; font-size: 14px;">TOTAL CRC: ₡${parseFloat(factura.total_final || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</p>
+            </div>
+            <script>
+                window.onload = function() { window.print(); window.close(); }
+            </script>
+        </body>
+        </html>
+    `;
+    const ventana = window.open('', '_blank', 'width=400,height=600');
+    ventana.document.write(contenido);
+    ventana.document.close();
+  };
+
+  const exportarAExcel = () => {
+    
+    const datosExcel = facturasVisibles.map(v => ({
+        'Documento': `${v.tipo_documento} #${v.id}`,
+        'Fecha': v.fecha || 'N/A',
+        'Cliente': v.cliente_nombre,
+        'Método de Pago': v.metodo_pago,
+        'Total CRC': parseFloat(v.total_final || 0),
+        'Estado': v.estado
+    }));
+     
+    const hoja = XLSX.utils.json_to_sheet(datosExcel);
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, "Reporte de Ventas");
+
+    XLSX.writeFile(libro, `Reporte_Ventas_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportarAPDF = () => {
+    const contenido = `
+        <html>
+        <head>
+            <title>Reporte de Ventas</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; font-weight: bold; }
+                .right { text-align: right; }
+            </style>
+        </head>
+        <body>
+            <h2>Reporte General de Transacciones</h2>
+            <p>Generado el: ${new Date().toLocaleString()}</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Documento</th><th>Fecha</th><th>Cliente</th><th>Método</th><th class="right">Total CRC</th><th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${facturasVisibles.map(v => `
+                        <tr>
+                            <td>${v.tipo_documento} #${v.id}</td>
+                            <td>${v.fecha || 'N/A'}</td>
+                            <td>${v.cliente_nombre}</td>
+                            <td>${v.metodo_pago}</td>
+                            <td class="right">₡${parseFloat(v.total_final || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                            <td>${v.estado}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+            <script>
+                window.onload = function() { window.print(); window.close(); }
+            </script>
+        </body>
+        </html>
+    `;
+    const ventana = window.open('', '_blank');
+    ventana.document.write(contenido);
+    ventana.document.close();
+  };
+
+  // ==========================================
+
   const opcionesEstado = [
     { valor: 'Todos', etiqueta: 'Todos los Estados' },
     { valor: 'Completado', etiqueta: 'Completado' },
@@ -81,18 +208,30 @@ export default function HistorialVentasPage() {
     { valor: 'Todos', etiqueta: 'Cualquier Medio' },
     { valor: 'Efectivo', etiqueta: 'Efectivo' },
     { valor: 'Tarjeta', etiqueta: 'Tarjeta / Datafono' },
-    { valor: 'SINPE', etiqueta: 'SINPE Móvil' }
+    { valor: 'SINPE', etiqueta: 'SINPE Móvil' },
+    { valor: 'Mixto', etiqueta: 'Mixto' }
   ];
 
   return (
     <main style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+      
+      {/* HEADER CON BOTONES DE EXPORTACIÓN */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px' }}>
         <div>
           <h2 style={{ margin: 0, color: 'var(--x-text-main)' }}>Registro de Transacciones</h2>
           <p style={{ margin: '5px 0 0 0', fontSize: '13px', color: 'var(--x-text-muted)' }}>Historial fiscal y logístico de ventas por bloque.</p>
         </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={exportarAExcel} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#107c41', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                 Exportar Excel
+            </button>
+            <button onClick={exportarAPDF} style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#e11d48', color: '#fff', border: 'none', padding: '10px 15px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                 Exportar PDF
+            </button>
+        </div>
       </div>
 
+      {/* FILTROS */}
       <div style={{ background: 'var(--x-bg-card)', padding: '20px', borderRadius: '12px', border: '1px solid var(--x-border)', marginBottom: '25px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'flex-end', position: 'relative', zIndex: 10 }}>
         <div style={{ flex: '1 1 200px' }}>
           <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '5px' }}>Búsqueda Rápida</label>
@@ -116,6 +255,7 @@ export default function HistorialVentasPage() {
         </div>
       </div>
 
+      {/* TABLA PRINCIPAL */}
       <div style={{ background: 'var(--x-bg-card)', borderRadius: '12px', border: '1px solid var(--x-border)', overflow: 'hidden', position: 'relative', zIndex: 1 }}>
         {cargando ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--x-text-muted)' }}>Cargando bloque de transacciones...</div>
@@ -167,11 +307,18 @@ export default function HistorialVentasPage() {
                           </div>
                         </td>
                       </tr>
+
+                      {/* DETALLE EXPANDIDO CON BOTÓN DE IMPRESIÓN */}
                       {expandido && (
                         <tr style={{ backgroundColor: 'rgba(0,0,0,0.2)', borderBottom: '2px solid var(--x-primary)' }}>
                           <td colSpan="7" style={{ padding: '20px' }}>
                             <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-                              <h4 style={{ margin: '0 0 10px 0', color: 'var(--x-text-main)', fontSize: '13px', textTransform: 'uppercase' }}>Desglose de Artículos</h4>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                  <h4 style={{ margin: 0, color: 'var(--x-text-main)', fontSize: '13px', textTransform: 'uppercase' }}>Desglose de Artículos</h4>
+                                  <button onClick={() => imprimirCopiaFactura(f)} style={{ backgroundColor: 'var(--x-bg-base)', border: '1px solid var(--x-border)', color: 'var(--x-primary)', padding: '6px 15px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>
+                                       Imprimir Copia
+                                  </button>
+                              </div>
                               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                                 <thead>
                                   <tr style={{ borderBottom: '1px solid var(--x-border)' }}>

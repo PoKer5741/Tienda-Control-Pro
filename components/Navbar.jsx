@@ -7,8 +7,6 @@ export default function Navbar() {
   const enlaces = [
     { nombre: 'Inicio', ruta: '/' },
     { nombre: 'Control de Caja', ruta: '/caja' },
-    { nombre: 'Clientes', ruta: '/clientes' },
-    { nombre: 'Categorías', ruta: '/categorias' },
     { nombre: 'Inventario', ruta: '/inventario' },
     { nombre: 'Compras', ruta: '/compras' },
     { nombre: 'Facturación', ruta: '/facturacion' },

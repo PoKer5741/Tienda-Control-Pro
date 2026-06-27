@@ -1,59 +1,60 @@
 # Tienda Control Pro - Sistema de Gestión Comercial
 
-**Universidad de Costa Rica - Sede del Sur**
-**Curso:** Lenguajes de Programación
-**Profesor:** Juan Gamboa Abarca
-**Integrantes:** Isaac Alexander Vega Orozco (GitHub: PoKer5741) -
-                Junior
-                Alonso
-                Jorge
+**Universidad de Costa Rica - Sede del Sur** **Curso:** Lenguajes de Programación  
+**Profesor:** Juan Gamboa Abarca  
+**Integrantes:** * Isaac Alexander Vega Orozco (GitHub: PoKer5741)
+* Junior Alonso Jorge
 ---
 
 ## 1. Descripción General
-Tienda Control Pro es una plataforma centralizada para el control de inventarios, facturación, reposición de stock y análisis de datos. Construida bajo una arquitectura cliente-servidor utilizando Next.js y SQL Server, la aplicación delega la carga transaccional al motor de base de datos para garantizar la integridad de las operaciones comerciales.
+Tienda Control Pro es una plataforma centralizada para el control de inventarios, facturación, reposición de stock y análisis de datos. Construida bajo una arquitectura cliente-servidor utilizando Next.js y Microsoft SQL Server, la aplicación delega la carga transaccional pesada al motor de base de datos para garantizar la integridad, seguridad y robustez de las operaciones comerciales.
 
 ## 2. Problema o Necesidad que Atiende
-En numerosos establecimientos comerciales, la gestión de inventario y la facturación se realizan de forma manual o mediante hojas de cálculo desvinculadas. Esto genera inconsistencias en el stock, errores en el cálculo de impuestos y dificultad para obtener métricas financieras en tiempo real. Este sistema resuelve dicha problemática al unificar las operaciones de entrada (compras) y salida (ventas) en un entorno estrictamente validado y conectado a una base de datos relacional.
+En numerosos establecimientos comerciales, la gestión de inventario y la facturación se realizan de forma manual o mediante hojas de cálculo desvinculadas. Esto genera inconsistencias en el stock, errores en el cálculo de impuestos y dificultad para obtener métricas financieras en tiempo real. Este sistema resuelve dicha problemática al unificar las operaciones de entrada (compras, familias, productos) y salida (ventas, tiquetes, facturas electrónicas) en un entorno validado y conectado en tiempo real a una base de datos relacional empresarial.
 
 ## 3. Objetivo del Sistema
-Desarrollar una aplicación web funcional utilizando Next.js y React que permita resolver la gestión integral de un comercio, aplicando conceptos fundamentales de los lenguajes de programación (modularidad, funciones asíncronas, estructuras de control), buenas prácticas de organización de código y manejo de bases de datos mediante procedimientos almacenados.
+Desarrollar una aplicación web funcional utilizando Next.js y React que permita resolver la gestión integral de un comercio, aplicando conceptos fundamentales de los lenguajes de programación (modularidad, funciones asíncronas, estructuras de control), buenas prácticas de organización de código y manejo seguro de bases de datos relacionales mediante procedimientos almacenados.
 
 ## 4. Tecnologías Utilizadas
-* **Frontend:** Next.js, React, CSS (Variables globales y diseño modular).
-* **Backend:** Node.js, Next.js Server Actions (para aislamiento de lógica de servidor).
-* **Base de Datos:** Microsoft SQL Server (Base de datos: Grupo3_IF51002026).
-* **Controlador DB:** mssql, msnodesqlv8 (Autenticación nativa).
+* **Frontend:** Next.js (App Router), React, CSS (Variables globales y diseño modular).
+* **Backend:** Node.js, Next.js Server Actions (aislamiento de lógica de servidor).
+* **Base de Datos:** Microsoft SQL Server (Base de datos: `Grupo3_IF51002026`).
+* **Controlador DB:** `mssql`, `msnodesqlv8` (Autenticación nativa y manejo de pools).
 * **Control de Versiones:** Git, GitHub.
 
 ## 5. Estructura de Carpetas
 El proyecto sigue el estándar de enrutamiento moderno (App Router) y la separación de responsabilidades:
-
 * `app/`: Contiene el enrutador principal y las vistas del sistema (`page.jsx`, `layout.jsx`).
-  * `app/inventario/`: Módulo de gestión de catálogo de productos y categorías.
-  * `app/compras/`: Módulo de reabastecimiento e ingreso de proveedores.
-  * `app/facturacion/`: Módulo de ventas y cálculo de impuestos.
-  * `app/estadisticas/`: Panel analítico (Dashboard).
-  * `app/actions/`: Centraliza las *Server Actions* (`inventarioActions.js`, `ventasActions.js`, etc.) para ejecutar operaciones SQL seguras.
-* `components/`: Contiene los elementos reutilizables de la interfaz de usuario, como `Navbar.jsx`.
-* `lib/`: Archivos de configuración técnica, destacando `db.js` que implementa el patrón Singleton para el Pool de conexiones a SQL Server.
+* `app/inventario/`: Módulo de gestión y alta de catálogo de productos (existencias) y familias (categorías).
+* `app/compras/`: Módulo de reabastecimiento e ingreso de proveedores.
+* `app/facturacion/`: Terminal de caja, autocompletado en vivo de artículos y clientes, aplicación de exoneraciones, cálculo de IVA y liquidaciones.
+* `app/estadisticas/`: Panel analítico (Dashboard).
+* `app/actions/`: Centraliza las *Server Actions* (`inventarioActions.js`, `ventasActions.js`, etc.) para ejecutar operaciones SQL de forma segura, evitando inyecciones.
+* `components/`: Elementos reutilizables de la interfaz de usuario, como barras de navegación y modales versátiles.
+* `lib/`: Archivos de configuración técnica, destacando `db.js` (implementa el patrón Singleton para el Pool de conexiones a SQL Server).
 
 ## 6. Descripción de los Módulos Principales
-1. **Inventario:** Permite visualizar el catálogo activo, realizar búsquedas mediante algoritmos de filtrado local e ingresar nuevos productos o categorías a la base de datos.
+1. **Inventario (Catálogo Unificado):** Permite visualizar existencias y familias, realizar búsquedas filtradas, dar de alta nuevos artículos, y realizar gestión de categorías (asignando descuentos globales o desvinculando ítems de manera relacional precisa mediante SQL Server).
 2. **Compras:** Facilita el ingreso de nueva mercadería. Actualiza el stock de los productos existentes e inserta el registro de la compra vinculada a un proveedor específico mediante una transacción atómica.
-3. **Facturación:** Gestiona el proceso de venta. Incluye un carrito de compras temporal, validación de stock disponible, cálculo de subtotal e IVA (13%), y el asentamiento final de la factura en el motor relacional.
-4. **Estadísticas:** Dashboard que extrae indicadores clave de rendimiento (KPIs) ejecutando agregaciones SQL (SUM, COUNT, TOP) para mostrar capital invertido, ingresos totales y productos con stock crítico.
+3. **Facturación (Terminal de Caja Vitaminada):** * **Buscador Inteligente:** Autocompletado en tiempo real tanto para artículos (búsqueda por nombre o código con escáner global de pistola) como para compradores.
+   * **Liquidación Fiscal (Hacienda CR):** Rebaja automática del IVA devengado según el porcentaje de exoneración del cliente (p.ej. Zonas Francas) con candados fiscales integrados.
+   * **Ficha Exprés de Clientes:** Alta inmediata de clientes desde la misma pantalla de cobro, con opción de vincular exoneraciones al instante.
+   * **Tickets en Espera:** Funcionalidad para pausar y recuperar carritos de compras.
+   * **Modal de Pago Dinámico:** Interfaz simplificada con botones directos para pagos en Efectivo, SINPE, Tarjeta o Mixtos, optimizada para impresoras térmicas de 80mm con impresión directa.
+4. **Estadísticas:** Dashboard que extrae indicadores clave de rendimiento (KPIs) ejecutando agregaciones SQL para mostrar capital invertido, ingresos totales y productos con stock crítico.
 
 ## 7. Explicación de Funciones Principales
 El sistema se apoya fuertemente en conceptos avanzados de programación:
-* **Server Actions (Modularidad e Interacción de Datos):** Funciones marcadas con `'use server'` que se ejecutan exclusivamente en el entorno backend. Permiten utilizar variables de servidor y ocultar las consultas SQL del cliente.
-* **Procedimientos Almacenados (Seguridad y Transacciones):** Se utilizan métodos como `.execute('sp_RegistrarVenta')` para invocar rutinas precompiladas en SQL Server. Esto garantiza que la inserción de la factura y el rebajo del inventario ocurran bajo el principio ACID (Atomicidad, Consistencia, Aislamiento y Durabilidad).
-* **Promesas Concurrentes (Optimización):** Se utiliza `Promise.all()` en la carga de vistas complejas (como el módulo de compras) para despachar consultas independientes (productos, categorías, proveedores) simultáneamente, reduciendo los tiempos de espera.
+* **Server Actions (Modularidad e Interacción de Datos):** Funciones marcadas con `'use server'` que se ejecutan exclusivamente en el backend, permitiendo utilizar variables de servidor y ocultar las consultas SQL del cliente.
+* **Patrón de Limpieza Quirúrgica de Estados:** En el manejo de formularios, los estados son reseteados al invocar nuevas instancias de registro, evitando colisiones o persistencia de datos basura en las ventanas modales.
+* **Procedimientos Almacenados (Seguridad y Transacciones):** Invocación de rutinas precompiladas en SQL Server. Esto garantiza que la inserción de la factura, rebajo del inventario y auditorías ocurran bajo el principio ACID (Atomicidad, Consistencia, Aislamiento y Durabilidad).
+* **Promesas Concurrentes (Optimización):** Uso de `Promise.all()` en la carga de vistas complejas para despachar consultas independientes simultáneamente, reduciendo tiempos de carga.
 
 ## 8. Instrucciones para Ejecutar el Proyecto
 1. Clonar el repositorio en el entorno local.
 2. Abrir la terminal en el directorio raíz del proyecto y ejecutar `npm install` para descargar las dependencias.
 3. Asegurar que la instancia de SQL Server esté en ejecución.
-4. Ejecutar el script SQL maestro proporcionado en la documentación para crear la base de datos `Grupo3_IF51002026`, sus tablas relacionales y sus procedimientos almacenados.
+4. Ejecutar el script SQL maestro proporcionado en la documentación para crear la base de datos `Grupo3_IF51002026`, sus tablas relacionales y procedimientos almacenados.
 5. Verificar la cadena de conexión en el archivo `lib/db.js`.
 6. Ejecutar el comando `npm run dev` para levantar el servidor de desarrollo.
 7. Acceder a `http://localhost:3000` en el navegador web.
@@ -61,6 +62,7 @@ El sistema se apoya fuertemente en conceptos avanzados de programación:
 ## 9. Dificultades Encontradas
 * **Sincronización de Estados en React:** Durante la migración de arreglos estáticos a datos asíncronos provenientes de SQL Server, se presentaron errores de lectura (como referencias nulas en el método `.map`). Se solucionó implementando un estado de carga inicial (`cargando`) e inicializando los hooks de estado con arreglos vacíos `[]`.
 * **Manejo de Conexiones a la Base de Datos:** En el entorno de desarrollo de Next.js, las recargas en caliente saturaban el servidor SQL al abrir múltiples conexiones. Esto se resolvió implementando el patrón Singleton en el archivo `lib/db.js` utilizando el objeto global de Node.
+* **Consistencia de Entradas Numéricas (Input / Backspace):** Al permitir que el usuario ingrese cantidades o porcentajes en la terminal de caja, el borrado de caracteres generaba cadenas vacías que bloqueaban los cálculos. Se reestructuró la función de actualización de cantidades para admitir cadenas vacías temporalmente sin romper el motor matemático de liquidación ni las reglas fiscales de Hacienda.
 
 ## 10. Conclusiones
 El desarrollo de la plataforma evidenció la viabilidad de integrar ecosistemas modernos basados en JavaScript (Next.js) con motores de bases de datos relacionales tradicionales empresariales (SQL Server). La aplicación estricta de la separación de lógica de cliente y servidor, combinada con procedimientos almacenados, resulta en un producto robusto, seguro frente a inyecciones SQL y altamente escalable para el contexto académico y comercial.

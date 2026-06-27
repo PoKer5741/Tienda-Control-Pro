@@ -47,3 +47,28 @@ export async function eliminarCategoria(id) {
         return { success: false, error: err.message };
     }
 }
+
+export async function desvincularProductoDeCategoria(productoId) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('producto_id', sql.Int, parseInt(productoId))
+            .execute('sp_DesvincularProductoCategoria');
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
+
+export async function aplicarDescuentoCategoria(categoriaId, porcentaje) {
+    try {
+        const pool = await poolPromise;
+        await pool.request()
+            .input('categoria_id', sql.Int, parseInt(categoriaId))
+            .input('porcentaje_descuento', sql.Decimal(5, 2), parseFloat(porcentaje))
+            .execute('sp_AplicarDescuentoCategoria');
+        return { success: true };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+}
