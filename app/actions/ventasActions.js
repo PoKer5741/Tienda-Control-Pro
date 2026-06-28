@@ -1,30 +1,31 @@
 'use server'
 import { poolPromise, sql } from '@/lib/db';
 
-export async function procesarVentaTransaccional(clienteId, tipoDocumento, metodoPago, subtotal, totalDescuentos, totalImpuestos, totalFinal, montoEfectivo, montoSinpe, montoTarjeta, notas, carrito) {
+export async function procesarVentaTransaccional(
+    cajaId, clienteId, tipoDocumento, metodoPago, subtotal, totalDescuentos, totalImpuestos, totalFinal, montoEfectivo, montoSinpe, montoTarjeta, notas, carrito
+) {
     try {
-        const pool = await poolPromise;
-        const carritoJson = JSON.stringify(carrito);
-
-        const result = await pool.request()
-            .input('cliente_id', sql.Int, parseInt(clienteId))
+        const pool = await poolPromise; 
+        
+        const resultado = await pool.request()
+            .input('caja_id', sql.Int, cajaId)
+            .input('cliente_id', sql.Int, clienteId)
             .input('tipo_documento', sql.VarChar(50), tipoDocumento)
             .input('metodo_pago', sql.VarChar(50), metodoPago)
-            .input('subtotal', sql.Decimal(10, 2), parseFloat(subtotal))
-            .input('total_descuentos', sql.Decimal(10, 2), parseFloat(totalDescuentos))
-            .input('total_impuestos', sql.Decimal(10, 2), parseFloat(totalImpuestos))
-            .input('total_final', sql.Decimal(10, 2), parseFloat(totalFinal))
-            .input('monto_efectivo', sql.Decimal(10, 2), parseFloat(montoEfectivo))
-            .input('monto_sinpe', sql.Decimal(10, 2), parseFloat(montoSinpe))
-            .input('monto_tarjeta', sql.Decimal(10, 2), parseFloat(montoTarjeta))
-            .input('notas', sql.VarChar(255), notas || '')
-            .input('carrito_json', sql.NVarChar(sql.MAX), carritoJson)
+            .input('subtotal', sql.Decimal(18, 2), subtotal)
+            .input('total_descuentos', sql.Decimal(18, 2), totalDescuentos)
+            .input('total_impuestos', sql.Decimal(18, 2), totalImpuestos)
+            .input('total_final', sql.Decimal(18, 2), totalFinal)
+            .input('monto_efectivo', sql.Decimal(18, 2), montoEfectivo)
+            .input('monto_sinpe', sql.Decimal(18, 2), montoSinpe)
+            .input('monto_tarjeta', sql.Decimal(18, 2), montoTarjeta)
+            .input('notas', sql.VarChar(sql.MAX), notas || '')
+            .input('carrito_json', sql.NVarChar(sql.MAX), JSON.stringify(carrito))
             .execute('sp_ProcesarVentaTransaccional');
 
-        return { success: true, facturaId: result.recordset[0].facturaId };
-    } catch (err) {
-        console.error('[MOTOR SQL ERROR]:', err.message);
-        return { success: false, error: err.message };
+        return { success: true, facturaId: resultado.recordset[0].facturaId };
+    } catch (error) {
+        return { success: false, error: error.message };
     }
 }
 

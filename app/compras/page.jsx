@@ -1,8 +1,13 @@
 'use client';
+import AccesoAdministrador from '@/components/AccesoAdministrador';
 import { useState, useEffect, Fragment } from 'react';
 import { obtenerHistorialVentas } from '@/app/actions/ventasActions';
 import { anularFacturaTransaccional } from '@/app/actions/anulacionesActions';
 import SelectPremium from '@/components/SelectPremium';
+import Modal from '@/components/Modal';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function HistorialVentasPage() {
   const [facturas, setFacturas] = useState([]);
@@ -21,6 +26,11 @@ export default function HistorialVentasPage() {
   const [filtroEstado, setFiltroEstado] = useState('Todos');
   const [filtroPago, setFiltroPago] = useState('Todos');
 
+  // Modal de anulación
+  const [modalAnulacion, setModalAnulacion] = useState({ abierto: false, id: null, numDoc: '' });
+  const [motivoAnulacion, setMotivoAnulacion] = useState('');
+  const [anulando, setAnulando] = useState(false);
+
   useEffect(() => {
     cargarHistorial(paginaActual);
   }, [paginaActual]);
@@ -38,14 +48,23 @@ export default function HistorialVentasPage() {
     setCargando(false);
   };
 
-  const manejarAnulacion = async (id, numDoc) => {
-    if (window.confirm(`¿Está seguro de que desea anular el documento ${numDoc} #${id}? Esta acción devolverá el stock al inventario.`)) {
-      const res = await anularFacturaTransaccional(id);
-      if (res.success) {
-        cargarHistorial(paginaActual);
-      } else {
-        alert('Fallo al anular: ' + res.error);
-      }
+  const abrirModalAnulacion = (id, numDoc) => {
+    setMotivoAnulacion('');
+    setModalAnulacion({ abierto: true, id, numDoc });
+  };
+
+  const confirmarAnulacion = async (e) => {
+    e.preventDefault();
+    if (!motivoAnulacion.trim()) return;
+    setAnulando(true);
+    const res = await anularFacturaTransaccional(modalAnulacion.id, motivoAnulacion);
+    setAnulando(false);
+    if (res.success) {
+      setModalAnulacion({ abierto: false, id: null, numDoc: '' });
+      setMotivoAnulacion('');
+      cargarHistorial(paginaActual);
+    } else {
+      alert('Fallo al anular: ' + res.error);
     }
   };
 
@@ -71,7 +90,216 @@ export default function HistorialVentasPage() {
   });
 
   // ==========================================
-  // NUEVAS FUNCIONES DE EXPORTACIÓN E IMPRESIÓN
+  // EXPORTACIÓN
+  // ==========================================
+
+  const exportarAExcel = () => {
+    const totalAceptadas = facturasVisibles
+        .filter(v => v.estado !== 'Cancelado')
+        .reduce((acc, v) => acc + parseFloat(v.total_final || 0), 0);
+
+    const cantAceptadas = facturasVisibles.filter(v => v.estado !== 'Cancelado').length;
+    const cantAnuladas = facturasVisibles.filter(v => v.estado === 'Cancelado').length;
+
+    const filas = facturasVisibles.map(v => ({
+        Documento: `${v.tipo_documento} #${v.id}`,
+        Fecha: v.fecha || 'N/A',
+        Cliente: v.cliente_nombre,
+        'Método de Pago': v.metodo_pago,
+        'Total CRC': parseFloat(v.total_final || 0),
+        Estado: v.estado
+    }));
+
+    filas.push({});
+    filas.push({
+        Documento: 'Documentos Aceptados',
+        Fecha: '',
+        Cliente: '',
+        'Método de Pago': cantAceptadas,
+        'Total CRC': totalAceptadas,
+        Estado: ''
+    });
+
+    filas.push({
+        Documento: 'Documentos Anulados',
+        Fecha: '',
+        Cliente: '',
+        'Método de Pago': cantAnuladas,
+        'Total CRC': 0,
+        Estado: ''
+    });
+
+    filas.push({
+        Documento: 'TOTAL GENERAL',
+        Fecha: '',
+        Cliente: '',
+        'Método de Pago': facturasVisibles.length,
+        'Total CRC': totalAceptadas,
+        Estado: ''
+    });
+
+    const ws = XLSX.utils.json_to_sheet(filas);
+
+    ws['!cols'] = [
+        { wch: 18 },
+        { wch: 22 },
+        { wch: 30 },
+        { wch: 16 },
+        { wch: 16 },
+        { wch: 12 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Transacciones');
+
+    XLSX.writeFile(
+        wb,
+        `Reporte_Ventas_${new Date().toISOString().split('T')[0]}.xlsx`
+    );
+};
+
+const exportarAPDF = () => {
+  const totalAceptadas = facturasVisibles
+      .filter(v => v.estado !== 'Cancelado')
+      .reduce((acc, v) => acc + parseFloat(v.total_final || 0), 0);
+
+  const cantAceptadas = facturasVisibles.filter(v => v.estado !== 'Cancelado').length;
+  const cantAnuladas = facturasVisibles.filter(v => v.estado === 'Cancelado').length;
+
+  const doc = new jsPDF({
+      orientation: 'landscape'
+  });
+
+  doc.setFontSize(16);
+  doc.setTextColor(30, 58, 95);
+  doc.text('Reporte General de Transacciones', 14, 16);
+
+  doc.setFontSize(9);
+  doc.setTextColor(100);
+  doc.text(
+      `Generado: ${new Date().toLocaleString()}   |   Registros: ${facturasVisibles.length}   |   Aceptados: ${cantAceptadas}   |   Anulados: ${cantAnuladas}`,
+      14,
+      23
+  );
+
+  autoTable(doc, {
+      startY: 28,
+      head: [[
+          '#',
+          'Documento',
+          'Fecha',
+          'Cliente',
+          'Método',
+          'Total CRC',
+          'Estado'
+      ]],
+      body: facturasVisibles.map((v, idx) => [
+          idx + 1,
+          `${v.tipo_documento} #${v.id}`,
+          v.fecha || 'N/A',
+          v.cliente_nombre,
+          v.metodo_pago,
+          `₡${parseFloat(v.total_final || 0).toLocaleString('es-CR', {
+              minimumFractionDigits: 2
+          })}`,
+          v.estado.toUpperCase()
+      ]),
+      styles: {
+          fontSize: 8,
+          cellPadding: 3
+      },
+      headStyles: {
+          fillColor: [30, 58, 95],
+          textColor: 255,
+          fontStyle: 'bold'
+      },
+      alternateRowStyles: {
+          fillColor: [249, 250, 251]
+      },
+      columnStyles: {
+          0: {
+              halign: 'center',
+              cellWidth: 10
+          },
+          5: {
+              halign: 'right'
+          },
+          6: {
+              halign: 'center'
+          }
+      },
+      didParseCell: data => {
+          if (data.section === 'body' && data.column.index === 6) {
+              const estado = facturasVisibles[data.row.index]?.estado;
+
+              if (estado === 'Cancelado') {
+                  data.cell.styles.textColor = [220, 38, 38];
+              } else {
+                  data.cell.styles.textColor = [22, 163, 74];
+              }
+          }
+      }
+  });
+
+  const finalY = doc.lastAutoTable.finalY + 10;
+
+  doc.setFontSize(10);
+  doc.setTextColor(30, 58, 95);
+  doc.text('Resumen del Período', 14, finalY);
+
+  autoTable(doc, {
+      startY: finalY + 4,
+      head: [['Concepto', 'Cantidad', 'Monto CRC']],
+      body: [
+          [
+              'Documentos Aceptados',
+              cantAceptadas,
+              `₡${totalAceptadas.toLocaleString('es-CR', {
+                  minimumFractionDigits: 2
+              })}`
+          ],
+          [
+              'Documentos Anulados',
+              cantAnuladas,
+              '₡0.00'
+          ],
+          [
+              'TOTAL GENERAL',
+              facturasVisibles.length,
+              `₡${totalAceptadas.toLocaleString('es-CR', {
+                  minimumFractionDigits: 2
+              })}`
+          ]
+      ],
+      styles: {
+          fontSize: 9
+      },
+      headStyles: {
+          fillColor: [55, 65, 81],
+          textColor: 255
+      },
+      columnStyles: {
+          1: {
+              halign: 'right'
+          },
+          2: {
+              halign: 'right'
+          }
+      },
+      didParseCell: data => {
+          if (data.section === 'body' && data.row.index === 2) {
+              data.cell.styles.fillColor = [30, 58, 95];
+              data.cell.styles.textColor = [255, 255, 255];
+              data.cell.styles.fontStyle = 'bold';
+          }
+      }
+  });
+
+  doc.save(
+      `Reporte_Ventas_${new Date().toISOString().split('T')[0]}.pdf`
+  );
+};
+
   // ==========================================
 
   const imprimirCopiaFactura = (factura) => {
@@ -130,68 +358,6 @@ export default function HistorialVentasPage() {
     ventana.document.close();
   };
 
-  const exportarAExcel = () => {
-    let csv = "DOCUMENTO,FECHA,CLIENTE,METODO_PAGO,TOTAL_CRC,ESTADO\n";
-    facturasVisibles.forEach(v => {
-        const clienteClean = (v.cliente_nombre || '').replace(/,/g, ' '); 
-        csv += `${v.tipo_documento} #${v.id},${v.fecha || 'N/A'},${clienteClean},${v.metodo_pago},${v.total_final},${v.estado}\n`;
-    });
-    const blob = new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8;" }); 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Reporte_Ventas_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
-
-  const exportarAPDF = () => {
-    const contenido = `
-        <html>
-        <head>
-            <title>Reporte de Ventas</title>
-            <style>
-                body { font-family: Arial, sans-serif; padding: 20px; color: #000; }
-                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
-                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-                th { background-color: #f2f2f2; font-weight: bold; }
-                .right { text-align: right; }
-            </style>
-        </head>
-        <body>
-            <h2>Reporte General de Transacciones</h2>
-            <p>Generado el: ${new Date().toLocaleString()}</p>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Documento</th><th>Fecha</th><th>Cliente</th><th>Método</th><th class="right">Total CRC</th><th>Estado</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${facturasVisibles.map(v => `
-                        <tr>
-                            <td>${v.tipo_documento} #${v.id}</td>
-                            <td>${v.fecha || 'N/A'}</td>
-                            <td>${v.cliente_nombre}</td>
-                            <td>${v.metodo_pago}</td>
-                            <td class="right">₡${parseFloat(v.total_final || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
-                            <td>${v.estado}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-            <script>
-                window.onload = function() { window.print(); window.close(); }
-            </script>
-        </body>
-        </html>
-    `;
-    const ventana = window.open('', '_blank');
-    ventana.document.write(contenido);
-    ventana.document.close();
-  };
-
-  // ==========================================
-
   const opcionesEstado = [
     { valor: 'Todos', etiqueta: 'Todos los Estados' },
     { valor: 'Completado', etiqueta: 'Completado' },
@@ -207,8 +373,73 @@ export default function HistorialVentasPage() {
   ];
 
   return (
+
+    <AccesoAdministrador>
     <main style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
-      
+
+      {/* MODAL DE ANULACIÓN */}
+      <Modal isOpen={modalAnulacion.abierto} onClose={() => !anulando && setModalAnulacion({ abierto: false, id: null, numDoc: '' })}>
+        <form onSubmit={confirmarAnulacion} style={{ width: '380px', color: '#fff' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid var(--x-border)' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger-red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div>
+              <div style={{ fontWeight: 'bold', fontSize: '15px' }}>Anular Documento</div>
+              <div style={{ fontSize: '12px', color: 'var(--x-text-muted)', marginTop: '2px' }}>
+                {modalAnulacion.numDoc} #{modalAnulacion.id}
+              </div>
+            </div>
+          </div>
+
+          <p style={{ fontSize: '13px', color: 'var(--x-text-muted)', marginBottom: '16px', lineHeight: '1.5' }}>
+            Esta acción es permanente. Se creará una Nota de Crédito automáticamente y el stock volverá al inventario.
+          </p>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ display: 'block', fontSize: '11px', color: 'var(--x-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Motivo de Anulación <span style={{ color: 'var(--danger-red)' }}>*</span>
+            </label>
+            <textarea
+              value={motivoAnulacion}
+              onChange={e => setMotivoAnulacion(e.target.value)}
+              placeholder="Ej: Error en los productos facturados, devolución del cliente..."
+              required
+              autoFocus
+              rows={3}
+              style={{
+                width: '100%', backgroundColor: 'rgba(0,0,0,0.2)', border: '1px solid var(--x-border)',
+                borderRadius: '6px', color: '#fff', padding: '10px 12px', fontSize: '13px',
+                resize: 'vertical', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box',
+                lineHeight: '1.5'
+              }}
+              onFocus={e => e.target.style.borderColor = 'var(--danger-red)'}
+              onBlur={e => e.target.style.borderColor = 'var(--x-border)'}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => setModalAnulacion({ abierto: false, id: null, numDoc: '' })}
+              disabled={anulando}
+              style={{ flex: 1, backgroundColor: 'transparent', border: '1px solid var(--x-border)', color: 'var(--x-text-main)', padding: '11px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={anulando || !motivoAnulacion.trim()}
+              style={{ flex: 1, backgroundColor: anulando || !motivoAnulacion.trim() ? 'rgba(239,68,68,0.4)' : 'var(--danger-red)', color: '#fff', border: 'none', padding: '11px', borderRadius: '6px', cursor: anulando || !motivoAnulacion.trim() ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '13px', textTransform: 'uppercase' }}
+            >
+              {anulando ? 'Procesando...' : 'Confirmar Anulación'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* HEADER CON BOTONES DE EXPORTACIÓN */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', flexWrap: 'wrap', gap: '15px' }}>
         <div>
@@ -287,6 +518,11 @@ export default function HistorialVentasPage() {
                           <span style={{ backgroundColor: esAnulada ? 'rgba(239, 68, 68, 0.1)' : 'rgba(0, 186, 124, 0.1)', color: esAnulada ? 'var(--danger-red)' : 'var(--success-green)', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
                             {f.estado.toUpperCase()}
                           </span>
+                          {esAnulada && f.nota_credito_id && (
+                            <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--x-text-muted)' }}>
+                              NC #{f.nota_credito_id}
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '14px 12px', textAlign: 'center' }}>
                           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
@@ -294,7 +530,7 @@ export default function HistorialVentasPage() {
                               {expandido ? 'Ocultar' : 'Detalle'}
                             </button>
                             {!esAnulada && (
-                              <button onClick={() => manejarAnulacion(f.id, f.tipo_documento)} style={{ backgroundColor: 'transparent', border: '1px solid var(--danger-red)', color: 'var(--danger-red)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>
+                              <button onClick={() => abrirModalAnulacion(f.id, f.tipo_documento)} style={{ backgroundColor: 'transparent', border: '1px solid var(--danger-red)', color: 'var(--danger-red)', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>
                                 Anular
                               </button>
                             )}
@@ -347,6 +583,23 @@ export default function HistorialVentasPage() {
                   );
                 })}
               </tbody>
+
+              {/* FILA DE TOTALES AL FINAL DE LA TABLA */}
+              {facturasVisibles.length > 0 && (
+                <tfoot>
+                  <tr style={{ borderTop: '2px solid var(--x-border)', backgroundColor: 'rgba(255,255,255,0.03)' }}>
+                    <td colSpan="4" style={{ padding: '14px 12px', fontWeight: 'bold', fontSize: '12px', color: 'var(--x-text-muted)' }}>
+                      TOTAL — {facturasVisibles.length} registros &nbsp;|&nbsp; {facturasVisibles.filter(f => f.estado !== 'Cancelado').length} aceptados &nbsp;|&nbsp; {facturasVisibles.filter(f => f.estado === 'Cancelado').length} anulados
+                    </td>
+                    <td style={{ padding: '14px 12px', textAlign: 'right', fontWeight: 'bold', fontSize: '15px', color: 'var(--success-green)' }}>
+                      ₡{facturasVisibles.filter(f => f.estado !== 'Cancelado').reduce((acc, f) => acc + parseFloat(f.total_final || 0), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}
+                    </td>
+                    <td colSpan="2" style={{ padding: '14px 12px', textAlign: 'center', fontSize: '11px', color: 'var(--x-text-muted)' }}>
+                      (sin anulados)
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}
@@ -376,5 +629,6 @@ export default function HistorialVentasPage() {
 
       </div>
     </main>
+    </AccesoAdministrador>
   );
 }

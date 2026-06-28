@@ -77,7 +77,8 @@ export async function obtenerDesgloseMetodosTurno(cajaId) {
     try {
         const pool = await poolPromise;
         const result = await pool.request()
-            .input('caja_turno_id', sql.Int, parseInt(cajaId))
+            // 👇 AQUÍ ESTABA EL ERROR: Cambiamos 'caja_turno_id' por 'caja_id' 👇
+            .input('caja_id', sql.Int, parseInt(cajaId))
             .execute('sp_ObtenerDesgloseMetodosTurno');
             
         return { success: true, datos: result.recordset || [] };

@@ -7,12 +7,11 @@ export default function Navbar() {
   const enlaces = [
     { nombre: 'Inicio', ruta: '/' },
     { nombre: 'Control de Caja', ruta: '/caja' },
+    { nombre: 'Facturación', ruta: '/facturacion' },
+    { nombre: 'Estadísticas', ruta: '/estadisticas' },
     { nombre: 'Inventario', ruta: '/inventario' },
     { nombre: 'Compras', ruta: '/compras' },
-    { nombre: 'Facturación', ruta: '/facturacion' },
-    { nombre: 'Registro Ventas', ruta: '/ventas' },
-    { nombre: 'Estadísticas', ruta: '/estadisticas' },
-    { nombre: 'Personal', ruta: '/trabajadores' }, // <-- Módulo añadido
+    { nombre: 'Personal', ruta: '/trabajadores' },  
   ];
 
   return (

@@ -101,9 +101,10 @@ export default function CajaPage() {
   };
 
   
-  const totalEfectivoVendido = ventasMetodos.find(m => m.metodo_pago === 'Efectivo')?.total_monto || 0;
-  const totalSinpe = ventasMetodos.find(m => m.metodo_pago === 'SINPE')?.total_monto || 0;
-  const totalTarjeta = ventasMetodos.find(m => m.metodo_pago === 'Tarjeta')?.total_monto || 0;
+ 
+const totalEfectivoVendido = parseFloat(ventasMetodos.find(m => m.metodo_pago === 'Efectivo')?.total_monto || 0);
+const totalSinpe = parseFloat(ventasMetodos.find(m => m.metodo_pago === 'SINPE')?.total_monto || 0);
+const totalTarjeta = parseFloat(ventasMetodos.find(m => m.metodo_pago === 'Tarjeta')?.total_monto || 0);
   
   const apertura = cajaActiva ? parseFloat(cajaActiva.monto_apertura) : 0;
   const efectivoTeoricoSist = apertura + totalEfectivoVendido;
@@ -188,7 +189,7 @@ export default function CajaPage() {
                 <input type="number" step="0.01" placeholder="₡0.00" value={efectivoContado} onChange={e => setEfectivoContado(e.target.value)} className="crud-input-style" style={{ fontSize: '16px', fontWeight: 'bold' }} required />
               </div>
 
-              {efectivoContado && (
+              {/* {efectivoContado && (
                 <div style={{ backgroundColor: diferenciaArqueo === 0 ? 'rgba(16,185,129,0.08)' : diferenciaArqueo > 0 ? 'rgba(59,130,246,0.08)' : 'rgba(239,68,68,0.08)', border: '1px solid', borderColor: diferenciaArqueo === 0 ? 'var(--success-green)' : diferenciaArqueo > 0 ? 'var(--x-primary)' : 'var(--danger-red)', padding: '15px', borderRadius: '8px', fontSize: '13px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span>Estado del Cuadre:</span>
@@ -201,7 +202,7 @@ export default function CajaPage() {
                     <span>₡{diferenciaArqueo.toLocaleString(undefined, {minimumFractionDigits: 2})}</span>
                   </div>
                 </div>
-              )}
+              )}*/}
 
               <button type="submit" style={{ backgroundColor: 'var(--danger-red)', color: '#fff', border: 'none', padding: '14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px', textTransform: 'uppercase' }}>
                 Asentar Arqueo y Cerrar Turno
@@ -211,79 +212,6 @@ export default function CajaPage() {
         </div>
       )}
 
-      {/* BITÁCORA DE AUDITORÍA */}
-      <h3 style={{ marginTop: '20px', marginBottom: '15px', color: 'var(--x-text-main)', borderBottom: '1px solid var(--x-border)', paddingBottom: '10px' }}>
-        Bitácora de Auditoría de Arqueos
-      </h3>
-      
-      <div style={{ background: 'var(--x-bg-card)', padding: '0', borderRadius: '12px', border: '1px solid var(--x-border)' }}>
-        {historialCajas.length === 0 ? (
-          <div style={{ padding: '30px', textAlign: 'center', color: 'var(--x-text-muted)' }}>No hay historial de cajas registrado.</div>
-        ) : (
-          <div className="table-wrapper">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--x-border)', color: 'var(--x-text-muted)' }}>
-                  <th style={{ padding: '15px 12px' }}>Turno</th>
-                  <th style={{ padding: '15px 12px' }}>Responsable</th>
-                  <th style={{ padding: '15px 12px' }}>Apertura</th>
-                  <th style={{ padding: '15px 12px' }}>Cierre</th>
-                  <th style={{ padding: '15px 12px', textAlign: 'right' }}>Descuadre</th>
-                  <th style={{ padding: '15px 12px', textAlign: 'center' }}>Estado</th>
-                  <th style={{ padding: '15px 12px', textAlign: 'center' }}>Auditar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historialCajas.map((c) => {
-                  const montoEsperado = parseFloat(c.monto_esperado_sistema || 0);
-                  const montoReal = c.monto_efectivo_real !== null ? parseFloat(c.monto_efectivo_real) : null;
-                  
-                  let diferencia = 0;
-                  let colorDescuadre = 'inherit';
-                  let textoDescuadre = '-';
-                  
-                  if (montoReal !== null) {
-                      diferencia = montoReal - montoEsperado;
-                      if (diferencia < 0) {
-                          colorDescuadre = 'var(--danger-red)';
-                          textoDescuadre = `Falta ₡${Math.abs(diferencia).toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-                      } else if (diferencia > 0) {
-                          colorDescuadre = 'var(--x-primary)';
-                          textoDescuadre = `Sobra ₡${diferencia.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
-                      } else {
-                          colorDescuadre = 'var(--success-green)';
-                          textoDescuadre = 'Cuadre Exacto';
-                      }
-                  }
-
-                  return (
-                    <tr key={c.id} style={{ borderBottom: '1px solid rgba(56,68,77,0.4)' }}>
-                      <td style={{ padding: '12px', fontWeight: 'bold' }}>#{c.id}</td>
-                      <td style={{ padding: '12px', fontWeight: '500' }}>{c.trabajador_nombre}</td>
-                      <td style={{ padding: '12px' }}>{c.fecha_apertura ? new Date(c.fecha_apertura).toISOString().replace('T', ' ').substring(0, 19) : 'N/A'}</td>
-                      <td style={{ padding: '12px' }}>{c.fecha_cierre ? new Date(c.fecha_cierre).toISOString().replace('T', ' ').substring(0, 19) : 'En ejecución'}</td>
-                      <td style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold', color: colorDescuadre }}>{textoDescuadre}</td>
-                      <td style={{ padding: '12px', textAlign: 'center' }}>
-                        <span style={{ backgroundColor: c.estado === 'Abierto' ? 'rgba(0, 186, 124, 0.15)' : 'rgba(255, 255, 255, 0.05)', color: c.estado === 'Abierto' ? 'var(--success-green)' : 'var(--x-text-muted)', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-                          {c.estado}
-                        </span>
-                      </td>
-                      <td style={{ padding: '12px', textAlign: 'center' }}>
-                        <button 
-                          onClick={() => abrirDetalleHistorico(c)}
-                          style={{ backgroundColor: 'transparent', border: '1px solid var(--x-primary)', color: 'var(--x-primary)', padding: '6px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer' }}
-                        >
-                          Ver Detalles
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
 
       {/* MODAL DE DETALLES TRANSACCIONALES */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>

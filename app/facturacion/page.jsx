@@ -5,11 +5,13 @@ import { procesarVentaTransaccional } from '@/app/actions/ventasActions';
 import { obtenerClientes, registrarCliente, guardarExoneracion } from '@/app/actions/clientesActions';
 import { enviarFacturaCorreo } from '@/app/actions/emailActions';
 import Modal from '@/components/Modal';
+import { verificarCajaAbierta } from '@/app/actions/cajaActions';
 
 export default function FacturacionPage() {
     // ==========================================
     // 1. ESTADOS GLOBALES DE LA TERMINAL
     // ==========================================
+    const [cajaId, setCajaId] = useState(null);
     const [inventario, setInventario] = useState([]);
     const [clientes, setClientes] = useState([]);
     const [cajaAbierta, setCajaAbierta] = useState(false);
@@ -116,8 +118,19 @@ export default function FacturacionPage() {
     const cargarSistemas = async () => {
         setCargando(true);
         try {
-            const [resInv, resCli] = await Promise.all([obtenerProductos(), obtenerClientes()]);
-            setCajaAbierta(true);
+            const [resInv, resCli, resCaja] = await Promise.all([
+                obtenerProductos(), 
+                obtenerClientes(),
+                verificarCajaAbierta()
+            ]);
+            
+            if (resCaja?.success && resCaja.caja) {
+                setCajaAbierta(true);
+                setCajaId(resCaja.caja.id);
+            } else {
+                setCajaAbierta(false);
+                setCajaId(null);
+            }
             
             if (resInv?.success) setInventario(resInv.datos.filter(p => p.estado_comercial !== 'Descontinuado') || []);
             if (resCli?.success) {
@@ -360,13 +373,16 @@ export default function FacturacionPage() {
     // ==========================================
     // EJECUCIÓN FINAL DE LA FACTURA EN SQL SERVER
     // ==========================================
+    // ==========================================
+    // EJECUCIÓN FINAL DE LA FACTURA EN SQL SERVER
+    // ==========================================
     const ejecutarFacturacion = async () => {
         const esPagoValido = metodoPago === 'Mixto' ? puedeCobrar : pagoValido;
         if (!esPagoValido || !clienteSeleccionado) return;
 
         const btn = document.getElementById('btn-procesar');
         if(btn) btn.innerText = 'PROCESANDO TRANSACCIÓN...';
-        
+
         let enviarEfectivo = 0, enviarSinpe = 0, enviarTarjeta = 0;
         if (metodoPago === 'Mixto') {
             enviarEfectivo = parseFloat(montosMixtos.efectivo) || 0;
@@ -374,13 +390,51 @@ export default function FacturacionPage() {
             enviarTarjeta = parseFloat(montosMixtos.tarjeta) || 0;
         } else if (metodoPago === 'Efectivo') { enviarEfectivo = parseFloat(montoIngresado) || totales.total;
         } else if (metodoPago === 'SINPE') { enviarSinpe = parseFloat(montoIngresado) || totales.total;
-        } else if (metodoPago === 'Tarjeta') { enviarTarjeta = parseFloat(montoIngresado) || totales.total; }
+        } else if (metodoPago === 'Tarjeta') { enviarTarjeta = parseFloat(montoIngresado) || totales.total;
+        }
 
+        // AQUÍ ESTÁ EL ORDEN CORREGIDO EXACTO (13 parámetros)
         const respuesta = await procesarVentaTransaccional(
-            clienteSeleccionado.id, tipoDocumento, metodoPago, 
-            totales.subtotalBruto, totales.descuentos, totales.ivaNeto, totales.total, 
-            enviarEfectivo, enviarSinpe, enviarTarjeta, notasFactura, carrito
+            cajaId, 
+            clienteSeleccionado.id, 
+            tipoDocumento, 
+            metodoPago, 
+            totales.subtotalBruto, 
+            totales.descuentos, 
+            totales.ivaNeto, 
+            totales.total, 
+            enviarEfectivo, 
+            enviarSinpe, 
+            enviarTarjeta, 
+            notasFactura, 
+            carrito
         );
+
+        if (respuesta.success) {
+            const fac = respuesta.facturaId;
+            setFacturaImpresion({
+                consecutivo: fac.toString().padStart(5, '0'), tipoDocumento, fecha: new Date().toLocaleString(),
+                cliente: clienteSeleccionado, metodoPago, notas: notasFactura,
+                subtotalBruto: totales.subtotalBruto, totalDescuentos: totales.descuentos, subtotalNeto: totales.subtotalNeto, 
+                totalImpuestos: totales.ivaNeto, totalFinal: totales.total, items: [...carrito]
+            });
+            
+            if (clienteSeleccionado.correo && clienteSeleccionado.correo !== 'sin@correo.com') {
+                await enviarFacturaCorreo(clienteSeleccionado.correo, clienteSeleccionado.nombre, tipoDocumento, fac, carrito, totales.subtotalNeto, totales.ivaNeto, totales.total);
+            }
+
+            setMostrarModalPago(false); 
+            setCarrito([]); 
+            omitirRegistro();
+            setMontosMixtos({ efectivo: '', sinpe: '', tarjeta: '' });
+            
+            if(btn) btn.innerText = 'ASENTAR Y FACTURAR';
+            setTimeout(() => { window.print(); }, 300);
+        } else {
+            alert('Fallo crítico al asentar la factura: ' + respuesta.error);
+            if(btn) btn.innerText = 'ASENTAR Y FACTURAR';
+        }
+    
 
         if (respuesta.success) {
             const fac = respuesta.facturaId;
